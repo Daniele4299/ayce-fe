@@ -29,7 +29,7 @@ const handleLogin = async (username: string, password: string) => {
       throw new Error(data.error || "Invalid username or password");
     }
 
-    router.replace("/");
+    router.replace("/private/admin/comande");
   } catch (e: any) {
     setError(e.message);
   }

@@ -1,11 +1,9 @@
 import {
-  IconAperture,
   IconCopy,
   IconLayoutDashboard,
   IconLogin,
   IconMoodHappy,
   IconTypography,
-  IconUserPlus,
 } from "@tabler/icons-react";
 
 import { uniqueId } from "lodash";
@@ -18,57 +16,45 @@ const Menuitems = [
 
   {
     id: uniqueId(),
-    title: "Dashboard",
+    title: "Comande",
     icon: IconLayoutDashboard,
-    href: "/",
+    href: "/private/admin/comande",
   },
   {
     navlabel: true,
-    subheader: "UTILITIES",
+    subheader: "GESTIONE",
   },
   {
     id: uniqueId(),
-    title: "Typography",
+    title: "Gestione Tavoli",
     icon: IconTypography,
-    href: "/utilities/typography",
+    href: "/private/admin/tavoli",
   },
   {
     id: uniqueId(),
-    title: "Shadow",
+    title: "Gestione Prodotti",
     icon: IconCopy,
-    href: "/utilities/shadow",
+    href: "/private/admin/prodotti",
   },
   {
     navlabel: true,
-    subheader: "AUTH",
+    subheader: "AUTENTICAZIONE",
   },
   {
     id: uniqueId(),
-    title: "Login",
+    title: "Gestione Utenze",
     icon: IconLogin,
-    href: "/authentication/login",
-  },
-  {
-    id: uniqueId(),
-    title: "Register",
-    icon: IconUserPlus,
-    href: "/authentication/register",
+    href: "/private/admin/utenze",
   },
   {
     navlabel: true,
-    subheader: " EXTRA",
+    subheader: "ALTRO",
   },
   {
     id: uniqueId(),
-    title: "Icons",
+    title: "Impostazioni",
     icon: IconMoodHappy,
-    href: "/icons",
-  },
-  {
-    id: uniqueId(),
-    title: "Sample Page",
-    icon: IconAperture,
-    href: "/sample-page",
+    href: "/private/admin/impostazioni",
   },
 
 ];

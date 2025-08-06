@@ -47,7 +47,6 @@ const Header = ({toggleMobileSidebar}: ItemType) => {
           <IconMenu width="20" height="20" />
         </IconButton>
 
-
         <IconButton
           size="large"
           aria-label="show 11 new notifications"
@@ -55,9 +54,7 @@ const Header = ({toggleMobileSidebar}: ItemType) => {
           aria-controls="msgs-menu"
           aria-haspopup="true"
         >
-          <Badge variant="dot" color="primary">
-            <IconBellRinging size="21" stroke="1.5" />
-          </Badge>
+
 
         </IconButton>
         <Box flexGrow={1} />

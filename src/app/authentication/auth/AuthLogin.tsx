@@ -6,7 +6,7 @@ import {
   Stack,
 } from "@mui/material";
 
-import CustomTextField from "@/app/(DashboardLayout)/components/forms/theme-elements/CustomTextField";
+import CustomTextField from "@/app/(DashboardLayout)/components/authentication/CustomTextField";
 
 interface LoginType {
   title?: string;
