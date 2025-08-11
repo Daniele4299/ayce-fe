@@ -1,82 +1,61 @@
-'use client'
+'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Grid, Box } from '@mui/material';
+import { Box, CircularProgress, Grid, Alert } from '@mui/material';
 import PageContainer from '@/app/(DashboardLayout)/components/container/PageContainer';
-// components
-import SalesOverview from '@/app/(DashboardLayout)/components/dashboard/SalesOverview';
-import YearlyBreakup from '@/app/(DashboardLayout)/components/dashboard/YearlyBreakup';
-import RecentTransactions from '@/app/(DashboardLayout)/components/dashboard/RecentTransactions';
-import ProductPerformance from '@/app/(DashboardLayout)/components/dashboard/ProductPerformance';
-import Blog from '@/app/(DashboardLayout)/components/dashboard/Blog';
-import MonthlyEarnings from '@/app/(DashboardLayout)/components/dashboard/MonthlyEarnings';
+import OrdineCard from '@/app/(DashboardLayout)/components/comande/OrdineCard';
 
-
-const Dashboard = () => {
-  const router = useRouter();
-  const [role, setRole] = useState<string | null>(null);
-
-useEffect(() => {
+const Comande = () => {
+  const [ordini, setOrdini] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [errore, setErrore] = useState<string | null>(null);
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
-  async function fetchUserRole() {
-    try {
-      const res = await fetch(`${backendUrl}/auth/me`, {
-        method: 'GET',
-        credentials: 'include',
-      });
 
-      if (res.ok) {
+  useEffect(() => {
+    const fetchOrdini = async () => {
+      try {
+        const res = await fetch(`${backendUrl}/api/ordini`, {
+          credentials: 'include',
+        });
+        if (!res.ok) throw new Error();
         const data = await res.json();
-        setRole(data.ruolo);
-      } else if (res.status === 401) {
-        // 🔥 Forza redirect con ricarica completa
-        window.location.href = '/authentication/login';
-      } else {
-        console.error('Errore nel recupero del ruolo utente');
+        setOrdini(data.filter((o: any) => !o.flagConsegnato));
+      } catch (err) {
+        console.error(err);
+        setErrore('Errore nel recupero delle comande');
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Errore fetch /auth/me', error);
-      // Fallimento fetch -> considera redirect
-      window.location.href = '/authentication/login';
-    }
-  }
+    };
 
-  fetchUserRole();
-}, []);
+    fetchOrdini();
+  }, []);
 
+  const aggiornaOrdine = (ordineId: number) => {
+    setOrdini((prev) => prev.filter((o) => o.id !== ordineId));
+  };
 
   return (
-    <PageContainer title="Dashboard" description="this is Dashboard">
-      <Box mb={2}>Ruolo utente: {role ?? 'Caricamento...'}</Box>
-      <Box>
-        <Grid container spacing={3}>
-          <Grid size={{ xs: 12, lg: 8 }}>
-            <SalesOverview />
-          </Grid>
-          <Grid size={{ xs: 12, lg: 4 }}>
-            <Grid container spacing={3}>
-              <Grid size={12}>
-                <YearlyBreakup />
+    <PageContainer title="Comande" description="Lista comande attive">
+      <Grid size={12}>
+        {loading ? (
+          <CircularProgress sx={{ m: 4 }} />
+        ) : errore ? (
+          <Alert severity="error" sx={{ m: 4 }}>{errore}</Alert>
+        ) : ordini.length === 0 ? (
+          <Alert severity="info" sx={{ m: 4 }}>Nessuna comanda attiva</Alert>
+        ) : (
+          <Grid container spacing={2}>
+            {ordini.map((ordine) => (
+              <Grid size={12} key={ordine.id}>
+                <OrdineCard ordine={ordine} onConsegnato={aggiornaOrdine} />
               </Grid>
-              <Grid size={12}>
-                <MonthlyEarnings />
-              </Grid>
-            </Grid>
+            ))}
           </Grid>
-          <Grid size={{ xs: 12, lg: 4 }}>
-            <RecentTransactions />
-          </Grid>
-          <Grid size={{ xs: 12, lg: 8 }}>
-            <ProductPerformance />
-          </Grid>
-          <Grid size={12}>
-            <Blog />
-          </Grid>
-        </Grid>
-      </Box>
+        )}
+      </Grid>
     </PageContainer>
   );
-}
+};
 
-export default Dashboard;
+export default Comande;

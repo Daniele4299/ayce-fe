@@ -148,6 +148,14 @@ const TavoloManagementForm = () => {
                   />
                   <Button
                     variant="outlined"
+                    color="primary"
+                    onClick={() => window.open(`${backendUrl}/api/qr/${t.numero}`, '_blank')}
+                  >
+                    QR
+                  </Button>
+
+                  <Button
+                    variant="outlined"
                     color="error"
                     onClick={() => deleteTavolo(t.id)}
                   >
