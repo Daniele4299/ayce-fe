@@ -10,6 +10,8 @@ import {
   TextField,
   CircularProgress,
   Alert,
+  FormControlLabel,
+  Switch,
 } from '@mui/material';
 import PageContainer from '@/app/(DashboardLayout)/components/container/PageContainer';
 import ProductCard from '@/app/(ClientLayout)/components/tavoli/ProductCard';
@@ -21,6 +23,7 @@ const CustomerTablePage = () => {
   const [tavolo, setTavolo] = useState<any>(null);
   const [sessione, setSessione] = useState<any>(null);
   const [numeroPersone, setNumeroPersone] = useState<number>(1);
+  const [isAyce, setIsAyce] = useState<boolean>(true);
   const [prodotti, setProdotti] = useState<any[]>([]);
   const [ordine, setOrdine] = useState<Record<number, number>>({});
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
@@ -92,6 +95,7 @@ const CustomerTablePage = () => {
           numeroPartecipanti: numeroPersone,
           stato: 'ATTIVA',
           orarioInizio: new Date().toISOString(),
+          isAyce: isAyce,
         }),
       });
 
@@ -175,7 +179,9 @@ const CustomerTablePage = () => {
       <Box mb={2}>
         <Typography variant="h4">Tavolo {numTavolo}</Typography>
         {sessione ? (
-          <Typography variant="subtitle1">Sessione attiva, buon appetito!</Typography>
+          <Typography variant="subtitle1">
+            Sessione attiva ({sessione.isAyce ? 'All You Can Eat' : 'Alla carta'}), buon appetito!
+          </Typography>
         ) : (
           <Box display="flex" alignItems="center" gap={2} mt={2}>
             <TextField
@@ -184,6 +190,16 @@ const CustomerTablePage = () => {
               value={numeroPersone}
               onChange={(e) => setNumeroPersone(Number(e.target.value))}
               inputProps={{ min: 1 }}
+            />
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={isAyce}
+                  onChange={(e) => setIsAyce(e.target.checked)}
+                  color="primary"
+                />
+              }
+              label="All You Can Eat"
             />
             <Button variant="contained" onClick={creaSessione}>
               Apri Tavolo
@@ -197,7 +213,10 @@ const CustomerTablePage = () => {
           {prodotti.map((prodotto) => (
             <Grid size={{ sm: 12, md: 6, lg: 4 }} key={prodotto.id}>
               <ProductCard
-                prodotto={prodotto}
+                prodotto={{
+                  ...prodotto,
+                  prezzo: sessione.isAyce ? 0 : prodotto.prezzo,
+                }}
                 quantita={ordine[prodotto.id] || 0}
                 onIncrement={() => modificaQuantita(prodotto.id, +1)}
                 onDecrement={() => modificaQuantita(prodotto.id, -1)}
