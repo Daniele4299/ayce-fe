@@ -1,130 +1,93 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import {
   Box,
   Button,
-  Grid,
-  Typography,
-  TextField,
   CircularProgress,
   Alert,
-  FormControlLabel,
-  Switch,
+  Grid,
 } from '@mui/material';
 import PageContainer from '@/app/(DashboardLayout)/components/container/PageContainer';
 import ProductCard from '@/app/(ClientLayout)/components/tavoli/ProductCard';
 
 const CustomerTablePage = () => {
   const { numTavolo } = useParams();
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [errore, setErrore] = useState<string | null>(null);
-  const [tavolo, setTavolo] = useState<any>(null);
   const [sessione, setSessione] = useState<any>(null);
-  const [numeroPersone, setNumeroPersone] = useState<number>(1);
-  const [isAyce, setIsAyce] = useState<boolean>(true);
   const [prodotti, setProdotti] = useState<any[]>([]);
   const [ordine, setOrdine] = useState<Record<number, number>>({});
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+  const [checkDone, setCheckDone] = useState(false);
 
-  // STEP 1: Controllo tavolo
   useEffect(() => {
-    const fetchTavolo = async () => {
+    if (checkDone) return;
+
+    const checkSessione = async () => {
       try {
-        const res = await fetch(`${backendUrl}/api/tavoli`, {
+        const meRes = await fetch(`${backendUrl}/auth/me`, {
           credentials: 'include',
         });
-        if (!res.ok) throw new Error();
-        const data = await res.json();
-        const tavoloMatch = data.find((t: any) => t.numero === Number(numTavolo));
-        if (!tavoloMatch) {
-          setErrore('Tavolo non esistente');
-          setLoading(false);
-          return;
-        }
-        if (!tavoloMatch.attivo) {
-          setErrore('Tavolo non attivo');
-          setLoading(false);
-          return;
-        }
-        setTavolo(tavoloMatch);
-      } catch (err) {
-        console.error(err);
-        setErrore('Errore nel recupero del tavolo');
-        setLoading(false);
-      }
-    };
 
-    fetchTavolo();
-  }, [numTavolo]);
+        if (meRes.status === 401) {
+            setSessione(null);
+        }
 
-  // STEP 2: Controllo sessione
-  useEffect(() => {
-    const fetchSessione = async () => {
-      if (!tavolo) return;
-      try {
-        const res = await fetch(`${backendUrl}/api/sessioni`, {
+
+        if (meRes.ok) {
+          const userData = await meRes.json();
+
+          // Se sessione CLIENT attiva ma tavolo diverso, redirect
+          if (userData.sessioneId && userData.tavoloNum !== Number(numTavolo)) {
+            router.replace(`/tavoli/${userData.tavoloNum}`);
+            return;
+          }
+
+          // Salva sessione se esiste
+          if (userData.sessioneId) {
+            setSessione(userData);
+            return;
+          }
+        }
+
+        // Se non c'è sessione attiva, login tavolo
+        const loginRes = await fetch(`${backendUrl}/auth/login-tavolo/${numTavolo}`, {
+          method: 'POST',
           credentials: 'include',
         });
-        if (!res.ok) throw new Error();
-        const data = await res.json();
-        const attiva = data.find(
-          (s: any) => s.tavolo.id === tavolo.id && s.stato === 'ATTIVA'
-        );
-        setSessione(attiva || null);
+
+        if (!loginRes.ok) throw new Error('Errore login tavolo');
+        const data = await loginRes.json();
+        setSessione(data);
+
       } catch (err) {
         console.error(err);
-        setErrore('Errore nel recupero della sessione');
+        setErrore('Errore nel collegamento al tavolo');
       } finally {
         setLoading(false);
+        setCheckDone(true);
       }
     };
 
-    fetchSessione();
-  }, [tavolo]);
+    checkSessione();
+  }, [numTavolo, backendUrl, router, checkDone]);
 
-  const creaSessione = async () => {
-    try {
-      const res = await fetch(`${backendUrl}/api/sessioni`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          tavolo,
-          numeroPartecipanti: numeroPersone,
-          stato: 'ATTIVA',
-          orarioInizio: new Date().toISOString(),
-          isAyce: isAyce,
-        }),
-      });
-
-      if (!res.ok) throw new Error();
-      const nuova = await res.json();
-      setSessione(nuova);
-    } catch {
-      setErrore('Errore nella creazione della sessione');
-    }
-  };
-
-  // Caricamento prodotti
   useEffect(() => {
     const fetchProdotti = async () => {
       try {
-        const res = await fetch(`${backendUrl}/api/prodotti`, {
-          credentials: 'include',
-        });
+        const res = await fetch(`${backendUrl}/api/prodotti`, { credentials: 'include' });
         if (!res.ok) throw new Error();
         const data = await res.json();
         setProdotti(data);
-      } catch (err) {
-        console.error(err);
+      } catch {
         setErrore('Errore nel recupero dei prodotti');
       }
     };
-
     if (sessione) fetchProdotti();
-  }, [sessione]);
+  }, [sessione, backendUrl]);
 
   const inviaOrdine = async () => {
     const ordiniDaInviare = Object.entries(ordine)
@@ -133,7 +96,7 @@ const CustomerTablePage = () => {
         const prodotto = prodotti.find((p) => p.id === Number(idProdotto));
         return {
           sessione,
-          tavolo,
+          tavolo: { id: sessione.tavoloId, numero: sessione.tavoloNum },
           prodotto,
           quantita,
           prezzoUnitario: prodotto.prezzo,
@@ -157,76 +120,37 @@ const CustomerTablePage = () => {
       setOrdine({});
       alert('Ordine inviato con successo!');
     } catch {
-      alert("Errore durante l'invio dell'ordine.");
+      alert('Errore durante l\'invio dell\'ordine.');
     }
   };
 
   const modificaQuantita = (idProdotto: number, delta: number) => {
     setOrdine((prev) => {
       const nuovaQuantita = (prev[idProdotto] || 0) + delta;
-      return {
-        ...prev,
-        [idProdotto]: Math.max(nuovaQuantita, 0),
-      };
+      return { ...prev, [idProdotto]: Math.max(nuovaQuantita, 0) };
     });
   };
 
   if (loading) return <CircularProgress sx={{ m: 4 }} />;
   if (errore) return <Alert severity="error" sx={{ m: 4 }}>{errore}</Alert>;
+  if (!sessione) return <Alert severity="info" sx={{ m: 4 }}>Sessione non ancora aperta, attendere il personale</Alert>;
 
   return (
-    <PageContainer title={`Tavolo ${numTavolo}`} description="Ordina dal menù">
-      <Box mb={2}>
-        <Typography variant="h4">Tavolo {numTavolo}</Typography>
-        {sessione ? (
-          <Typography variant="subtitle1">
-            Sessione attiva ({sessione.isAyce ? 'All You Can Eat' : 'Alla carta'}), buon appetito!
-          </Typography>
-        ) : (
-          <Box display="flex" alignItems="center" gap={2} mt={2}>
-            <TextField
-              type="number"
-              label="Numero persone"
-              value={numeroPersone}
-              onChange={(e) => setNumeroPersone(Number(e.target.value))}
-              inputProps={{ min: 1 }}
+    <PageContainer title={`Tavolo ${sessione.tavoloNum}`} description="Ordina dal menù">
+      <Grid container spacing={2}>
+        {prodotti.map((prodotto) => (
+          <Grid size={{ sm: 12, md: 6, lg: 4 }} key={prodotto.id}>
+            <ProductCard
+              prodotto={{ ...prodotto, prezzo: sessione.isAyce ? 0 : prodotto.prezzo }}
+              quantita={ordine[prodotto.id] || 0}
+              onIncrement={() => modificaQuantita(prodotto.id, +1)}
+              onDecrement={() => modificaQuantita(prodotto.id, -1)}
             />
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={isAyce}
-                  onChange={(e) => setIsAyce(e.target.checked)}
-                  color="primary"
-                />
-              }
-              label="All You Can Eat"
-            />
-            <Button variant="contained" onClick={creaSessione}>
-              Apri Tavolo
-            </Button>
-          </Box>
-        )}
-      </Box>
+          </Grid>
+        ))}
+      </Grid>
 
-      {sessione && (
-        <Grid container spacing={2}>
-          {prodotti.map((prodotto) => (
-            <Grid size={{ sm: 12, md: 6, lg: 4 }} key={prodotto.id}>
-              <ProductCard
-                prodotto={{
-                  ...prodotto,
-                  prezzo: sessione.isAyce ? 0 : prodotto.prezzo,
-                }}
-                quantita={ordine[prodotto.id] || 0}
-                onIncrement={() => modificaQuantita(prodotto.id, +1)}
-                onDecrement={() => modificaQuantita(prodotto.id, -1)}
-              />
-            </Grid>
-          ))}
-        </Grid>
-      )}
-
-      {sessione && Object.values(ordine).some((q) => q > 0) && (
+      {Object.values(ordine).some((q) => q > 0) && (
         <Box mt={4}>
           <Button variant="contained" color="primary" onClick={inviaOrdine}>
             Invia Ordine
