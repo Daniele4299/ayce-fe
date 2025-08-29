@@ -52,12 +52,6 @@ const Menuitems = [
   },
   {
     id: uniqueId(),
-    title: "Impostazioni",
-    icon: IconMoodHappy,
-    href: "/private/admin/impostazioni",
-  },
-    {
-    id: uniqueId(),
     title: "Statistiche",
     icon: IconMoodHappy,
     href: "/private/admin/statistiche",
