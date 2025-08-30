@@ -1,9 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { 
-  Box, Typography, TextField, Button, Grid, MenuItem, Card, CardContent, Divider, 
-  Checkbox, FormControlLabel, Dialog, DialogTitle, DialogContent, DialogActions 
-} from '@mui/material';
+import { Box, Typography, TextField, Button, Grid, MenuItem, Card, CardContent, Divider, Checkbox, FormControlLabel, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
 
 const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
 
@@ -22,6 +19,7 @@ type Prodotto = {
   isCena: boolean;
   isAyce: boolean;
   isCarta: boolean;
+  isLimitedPartecipanti: boolean;
 };
 
 type UtenteProdotto = {
@@ -50,7 +48,8 @@ const ProductManagementForm = () => {
     isPranzo: true,
     isCena: true,
     isAyce: true,
-    isCarta: true
+    isCarta: true,
+    isLimitedPartecipanti: false,
   });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -90,7 +89,8 @@ const ProductManagementForm = () => {
           isPranzo: p.isPranzo ?? true,
           isCena: p.isCena ?? true,
           isAyce: p.isAyce ?? true,
-          isCarta: p.isCarta ?? true
+          isCarta: p.isCarta ?? true,
+          isLimitedPartecipanti: p.isLimitedPartecipanti ?? false,
         }));
         setProdotti(data);
       }
@@ -105,7 +105,9 @@ const ProductManagementForm = () => {
       if (res.ok) {
         const data: UtenteProdotto[] = await res.json();
         const map: Record<number, boolean> = {};
-        data.forEach(up => { map[up.id.prodottoId] = up.riceveComanda; });
+        data.forEach(up => {
+          map[up.id.prodottoId] = up.riceveComanda;
+        });
         setUtenteProdotti(map);
       }
     } catch (err) {
@@ -120,7 +122,7 @@ const ProductManagementForm = () => {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ riceveComanda: value }),
-        credentials: 'include'
+        credentials: 'include',
       });
       if (res.ok) {
         setUtenteProdotti(prev => prev ? { ...prev, [prodottoId]: value } : { [prodottoId]: value });
@@ -141,7 +143,6 @@ const ProductManagementForm = () => {
       alert("Seleziona una categoria prima di salvare.");
       return;
     }
-
     const formData = new FormData();
     formData.append('nome', form.nome);
     formData.append('descrizione', form.descrizione || '');
@@ -151,7 +152,7 @@ const ProductManagementForm = () => {
     formData.append('isCena', String(form.isCena));
     formData.append('isAyce', String(form.isAyce));
     formData.append('isCarta', String(form.isCarta));
-
+    formData.append('isLimitedPartecipanti', String(form.isLimitedPartecipanti));
     if (file) {
       formData.append('immagine', file);
     } else {
@@ -160,12 +161,21 @@ const ProductManagementForm = () => {
 
     const method = form.id ? 'PUT' : 'POST';
     const url = form.id ? `${backendUrl}/api/prodotti/${form.id}` : `${backendUrl}/api/prodotti`;
-
     try {
       const res = await fetch(url, { method, body: formData, credentials: 'include' });
       if (res.ok) {
         await fetchProdotti();
-        setForm({ nome: '', descrizione: '', prezzo: 0, categoria: undefined, isPranzo: true, isCena: true, isAyce: true, isCarta: true });
+        setForm({
+          nome: '',
+          descrizione: '',
+          prezzo: 0,
+          categoria: undefined,
+          isPranzo: true,
+          isCena: true,
+          isAyce: true,
+          isCarta: true,
+          isLimitedPartecipanti: false,
+        });
         setFile(null);
       }
     } catch (err) {
@@ -232,32 +242,26 @@ const ProductManagementForm = () => {
           <Grid size={{ xs: 12 }}>
             <Button variant="outlined" component="label" fullWidth>
               Carica Immagine
-              <input type="file" hidden accept="image/*" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+              <input type="file" hidden accept="image/*" onChange={e => setFile(e.target.files?.[0] || null)} />
             </Button>
             {file && <Typography variant="body2">{file.name}</Typography>}
             {!file && form.id && (
               <Box mt={1} textAlign="center">
-                <img 
-                  src={`${backendUrl}/api/prodotti/${form.id}/immagine`} 
-                  alt="Anteprima immagine prodotto" 
-                  style={{ maxWidth: '200px', maxHeight: '150px', objectFit: 'contain' }} 
-                  onError={e => { (e.target as HTMLImageElement).src = '/images/products/placeholder.png'; }} 
+                <img
+                  src={`${backendUrl}/api/prodotti/${form.id}/immagine`}
+                  alt="Anteprima immagine prodotto"
+                  style={{ maxWidth: '200px', maxHeight: '150px', objectFit: 'contain' }}
+                  onError={e => { (e.target as HTMLImageElement).src = '/images/products/placeholder.png'; }}
                 />
               </Box>
             )}
           </Grid>
           <Grid size={{ xs: 12, sm: 6 }}>
-            <TextField
-              select
-              fullWidth
-              label="Categoria"
-              value={form.categoria?.id ?? ''}
-              onChange={e => {
-                const id = e.target.value === '' ? undefined : Number(e.target.value);
-                const sel = id ? categorie.find(c => c.id === id) : undefined;
-                setForm({ ...form, categoria: sel });
-              }}
-            >
+            <TextField select fullWidth label="Categoria" value={form.categoria?.id ?? ''} onChange={e => {
+              const id = e.target.value === '' ? undefined : Number(e.target.value);
+              const sel = id ? categorie.find(c => c.id === id) : undefined;
+              setForm({ ...form, categoria: sel });
+            }}>
               <MenuItem value=''>Seleziona categoria</MenuItem>
               {categorie.map(cat => <MenuItem key={cat.id} value={String(cat.id)}>{cat.nome}</MenuItem>)}
             </TextField>
@@ -267,6 +271,7 @@ const ProductManagementForm = () => {
             <FormControlLabel control={<Checkbox checked={form.isCena} onChange={e => setForm({ ...form, isCena: e.target.checked })} />} label="Disponibile a cena" />
             <FormControlLabel control={<Checkbox checked={form.isAyce} onChange={e => setForm({ ...form, isAyce: e.target.checked })} />} label="All You Can Eat" />
             <FormControlLabel control={<Checkbox checked={form.isCarta} onChange={e => setForm({ ...form, isCarta: e.target.checked })} />} label="Alla Carta" />
+            <FormControlLabel control={<Checkbox checked={form.isLimitedPartecipanti} onChange={e => setForm({ ...form, isLimitedPartecipanti: e.target.checked })} />} label="Limitato ai partecipanti" />
           </Grid>
           <Grid size={{ xs: 12 }}>
             <Button fullWidth variant="contained" color="primary" onClick={handleSubmit}>
@@ -293,66 +298,76 @@ const ProductManagementForm = () => {
 
         {utenteProdotti && currentUserId && (
           <Box mb={2} display="flex" justifyContent="flex-end" gap={2}>
-            <Button variant="outlined" onClick={() => toggleRiceveComandaBulk(true)}>
-              Attiva ricezione comande
-            </Button>
-            <Button variant="outlined" color="error" onClick={() => toggleRiceveComandaBulk(false)}>
-              Disattiva ricezione comande
-            </Button>
+            <Button variant="outlined" onClick={() => toggleRiceveComandaBulk(true)}>Attiva ricezione comande</Button>
+            <Button variant="outlined" color="error" onClick={() => toggleRiceveComandaBulk(false)}>Disattiva ricezione comande</Button>
           </Box>
         )}
 
         <Typography variant="h6">Lista Prodotti</Typography>
         <Grid container spacing={2} sx={{ mt: 1 }}>
-          {prodottiFiltrati.map(p => (
-            <Grid size={{ xs: 12 }} key={p.id}>
-              <Card variant="outlined">
-                <CardContent>
-                  <Box display="flex" justifyContent="space-between" alignItems="center">
-                    <Box display="flex" alignItems="center" gap={2}>
-                      {p.id && (
-                        <img 
-                          src={`${backendUrl}/api/prodotti/${p.id}/immagine`} 
-                          alt={p.nome} 
-                          style={{ width: 80, height: 60, objectFit: 'cover', borderRadius: 4 }} 
-                          onError={e => { (e.target as HTMLImageElement).src = '/images/products/placeholder.png'; }} 
-                        />
-                      )}
-                      <Box>
-                        <Typography variant="subtitle1">{p.nome} - €{p.prezzo.toFixed(2)}</Typography>
-                        <Typography variant="body2" color="textSecondary">{p.descrizione}</Typography>
-                        <Typography variant="body2" color="textSecondary">{p.categoria?.nome ?? ''}</Typography>
-                        <Box display="flex" gap={1}>
-                          {p.isPranzo && <Typography variant="caption" color="primary">Pranzo</Typography>}
-                          {p.isCena && <Typography variant="caption" color="secondary">Cena</Typography>}
-                          {p.isAyce && <Typography variant="caption" color="success.main">AYCE</Typography>}
-                          {p.isCarta && <Typography variant="caption" color="warning.main">Carta</Typography>}
-                        </Box>
-                      </Box>
-                    </Box>
-
-                    <Box display="flex" gap={1} alignItems="center">
-                      {utenteProdotti && currentUserId && (
-                        <FormControlLabel
-                          control={<Checkbox checked={utenteProdotti[p.id!] || false} onChange={e => toggleRiceveComanda(p.id!, e.target.checked)} />}
-                          label="Ricevi comanda"
-                        />
-                      )}
-                      <Button size="small" variant="outlined" onClick={() => handleEdit(p)}>Modifica</Button>
-                      <Button size="small" variant="outlined" color="error" onClick={() => confirmDelete(p.id!)}>Elimina</Button>
+{prodottiFiltrati.map(p => (
+  <Grid size={{ xs: 12 }} key={p.id}>
+    <Card variant="outlined" sx={{ position: 'relative' }}>
+            {p.isLimitedPartecipanti && (
+              <Box
+                sx={{
+                  position: 'absolute',
+                  top: 8,
+                  left: 8,
+                  backgroundColor: 'error.main',
+                  color: 'white',
+                  px: 1.5,
+                  py: 0.5,
+                  borderRadius: 1,
+                  fontWeight: 'bold',
+                  fontSize: 12,
+                  zIndex: 10,
+                }}
+              >
+                LIMITATO
+              </Box>
+            )}
+            <CardContent>
+              <Box display="flex" justifyContent="space-between" alignItems="center">
+                <Box display="flex" alignItems="center" gap={2}>
+                  {p.id && (
+                    <img
+                      src={`${backendUrl}/api/prodotti/${p.id}/immagine`}
+                      alt={p.nome}
+                      style={{ width: 80, height: 60, objectFit: 'cover', borderRadius: 4 }}
+                      onError={e => { (e.target as HTMLImageElement).src = '/images/products/placeholder.png'; }}
+                    />
+                  )}
+                  <Box>
+                    <Typography variant="subtitle1">{p.nome} - €{p.prezzo.toFixed(2)}</Typography>
+                    <Typography variant="body2" color="textSecondary">{p.descrizione}</Typography>
+                    <Typography variant="body2" color="textSecondary">{p.categoria?.nome ?? ''}</Typography>
+                    <Box display="flex" gap={1}>
+                      {p.isPranzo && <Typography variant="caption" color="primary">Pranzo</Typography>}
+                      {p.isCena && <Typography variant="caption" color="secondary">Cena</Typography>}
+                      {p.isAyce && <Typography variant="caption" color="success.main">AYCE</Typography>}
+                      {p.isCarta && <Typography variant="caption" color="warning.main">Carta</Typography>}
                     </Box>
                   </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
+                </Box>
+                <Box display="flex" gap={1} alignItems="center">
+                  {utenteProdotti && currentUserId && (
+                    <FormControlLabel control={<Checkbox checked={utenteProdotti[p.id!] || false} onChange={e => toggleRiceveComanda(p.id!, e.target.checked)} />} label="Ricevi comanda" />
+                  )}
+                  <Button size="small" variant="outlined" onClick={() => handleEdit(p)}>Modifica</Button>
+                  <Button size="small" variant="outlined" color="error" onClick={() => confirmDelete(p.id!)}>Elimina</Button>
+                </Box>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      ))}
+
         </Grid>
 
         <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
           <DialogTitle>Conferma eliminazione</DialogTitle>
-          <DialogContent>
-            Sei sicuro di voler eliminare questo prodotto?
-          </DialogContent>
+          <DialogContent>Sei sicuro di voler eliminare questo prodotto?</DialogContent>
           <DialogActions>
             <Button onClick={() => setDeleteDialogOpen(false)}>Annulla</Button>
             <Button color="error" onClick={handleDeleteConfirmed}>Elimina</Button>
