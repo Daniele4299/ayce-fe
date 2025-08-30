@@ -15,15 +15,14 @@ import { Client, IMessage } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 
 interface TavoloMessagePayload {
-  prodottoId: number;
-  quantita: number;
+  [prodottoId: number]: number;
 }
 
 interface TavoloMessage {
   sessioneId: number;
   tavoloId: number;
-  tipoEvento: string; // ADD_ITEM_TEMP, REMOVE_ITEM_TEMP, ORDER_SENT
-  payload: string;
+  tipoEvento: string; // UPDATE_TEMP, ORDER_SENT
+  payload: string; // JSON string
 }
 
 const CustomerTablePage = () => {
@@ -100,70 +99,74 @@ const CustomerTablePage = () => {
     if (sessione) fetchProdotti();
   }, [sessione, backendUrl]);
 
-  // ---- Inizializza WebSocket
+  // ---- Recupero ordine temporaneo iniziale
   useEffect(() => {
-  if (!sessione) return;
-
-  const socket = new SockJS(`${backendUrl}/ws`);
-  const client = new Client({
-    webSocketFactory: () => socket,
-    debug: (str) => console.log(str),
-    reconnectDelay: 5000,
-  });
-
-  client.onConnect = () => {
-    client.subscribe(`/topic/tavolo/${sessione.tavoloId}`, (message: IMessage) => {
-      const data: TavoloMessage = JSON.parse(message.body);
-
-      if (data.tipoEvento === 'ADD_ITEM_TEMP' || data.tipoEvento === 'REMOVE_ITEM_TEMP') {
-        const payload: TavoloMessagePayload = JSON.parse(data.payload);
-        setOrdine((prev) => {
-          const nuovaQuantita = data.tipoEvento === 'ADD_ITEM_TEMP'
-            ? (prev[payload.prodottoId] || 0) + payload.quantita
-            : Math.max((prev[payload.prodottoId] || 0) - payload.quantita, 0);
-          return { ...prev, [payload.prodottoId]: nuovaQuantita };
+    const fetchOrdineTemp = async () => {
+      try {
+        const res = await fetch(`${backendUrl}/api/tavoli/${sessione.tavoloId}/ordine-temporaneo`, {
+          credentials: 'include',
         });
-      } else if (data.tipoEvento === 'ORDER_SENT') {
-        setOrdineBloccato(true);
+        if (!res.ok) throw new Error();
+        const data: TavoloMessagePayload = await res.json();
+        setOrdine(data);
+      } catch (err) {
+        console.error(err);
       }
+    };
+
+    if (sessione) fetchOrdineTemp();
+  }, [sessione, backendUrl]);
+
+  // ---- WebSocket
+  useEffect(() => {
+    if (!sessione) return;
+
+    const socket = new SockJS(`${backendUrl}/ws`);
+    const client = new Client({
+      webSocketFactory: () => socket,
+      debug: (str) => console.log(str),
+      reconnectDelay: 5000,
     });
-  };
 
-  client.activate();
-  stompClientRef.current = client;
+    client.onConnect = () => {
+      client.subscribe(`/topic/tavolo/${sessione.tavoloId}`, (message: IMessage) => {
+        const data: TavoloMessage = JSON.parse(message.body);
 
-  // Cleanup sincrono
-  return () => {
-    if (stompClientRef.current) {
-      stompClientRef.current.deactivate();
-      stompClientRef.current = null;
-    }
-  };
-}, [sessione, backendUrl]);
+        if (data.tipoEvento === 'UPDATE_TEMP') {
+          const payload: TavoloMessagePayload = JSON.parse(data.payload);
+          setOrdine(payload);
+        } else if (data.tipoEvento === 'ORDER_SENT') {
+          setOrdineBloccato(true);
+        }
+      });
+    };
 
+    client.activate();
+    stompClientRef.current = client;
+
+    return () => {
+      if (stompClientRef.current) {
+        stompClientRef.current.deactivate();
+        stompClientRef.current = null;
+      }
+    };
+  }, [sessione, backendUrl]);
 
   // ---- Modifica quantità
   const modificaQuantita = (idProdotto: number, delta: number) => {
-    if (ordineBloccato || !stompClientRef.current?.connected) return;
+  if (ordineBloccato || !stompClientRef.current?.connected) return;
 
-    setOrdine((prev) => {
-      const nuovaQuantita = Math.max((prev[idProdotto] || 0) + delta, 0);
+  stompClientRef.current?.publish({
+    destination: '/app/tavolo',
+    body: JSON.stringify({
+      sessioneId: sessione.sessioneId,
+      tavoloId: sessione.tavoloId,
+      tipoEvento: delta > 0 ? 'ADD_ITEM_TEMP' : 'REMOVE_ITEM_TEMP',
+      payload: JSON.stringify({ prodottoId: idProdotto, quantita: Math.abs(delta) }),
+    }),
+  });
+};
 
-      if (nuovaQuantita !== (prev[idProdotto] || 0)) {
-        stompClientRef.current?.publish({
-          destination: '/app/tavolo',
-          body: JSON.stringify({
-            sessioneId: sessione.sessioneId,
-            tavoloId: sessione.tavoloId,
-            tipoEvento: delta > 0 ? 'ADD_ITEM_TEMP' : 'REMOVE_ITEM_TEMP',
-            payload: JSON.stringify({ prodottoId: idProdotto, quantita: Math.abs(delta) }),
-          }),
-        });
-      }
-
-      return { ...prev, [idProdotto]: nuovaQuantita };
-    });
-  };
 
   // ---- Invia ordine
   const inviaOrdine = async () => {
@@ -197,9 +200,6 @@ const CustomerTablePage = () => {
         )
       );
 
-      setOrdine({});
-      setOrdineBloccato(true);
-
       // invio evento ORDER_SENT al WS
       stompClientRef.current?.publish({
         destination: '/app/tavolo',
@@ -211,6 +211,7 @@ const CustomerTablePage = () => {
         }),
       });
 
+      setOrdineBloccato(true);
       alert('Ordine inviato con successo!');
     } catch {
       alert('Errore durante l\'invio dell\'ordine.');
@@ -231,7 +232,6 @@ const CustomerTablePage = () => {
               quantita={ordine[prodotto.id] || 0}
               onIncrement={() => modificaQuantita(prodotto.id, +1)}
               onDecrement={() => modificaQuantita(prodotto.id, -1)}
-              //disabled={ordineBloccato}
             />
           </Grid>
         ))}
