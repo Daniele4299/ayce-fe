@@ -21,14 +21,22 @@ const ProductCard = ({
   onIncrement: () => void;
   onDecrement: () => void;
 }) => {
+  // URL immagine con fallback a placeholder
+  const imageUrl = prodotto.id
+    ? `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/prodotti/${prodotto.id}/immagine`
+    : '/images/products/placeholder.png';
+
   return (
     <Card sx={{ height: '100%' }}>
-    <CardMedia
-      component="img"
-      height="160"
-      image={`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/prodotti/${prodotto.id}/immagine`}
-      alt={prodotto.nome}
-    />
+      <CardMedia
+        component="img"
+        height="160"
+        image={imageUrl}
+        alt={prodotto.nome}
+        onError={(e) => {
+          (e.target as HTMLImageElement).src = '/images/products/placeholder.png';
+        }}
+      />
       <CardContent>
         <Typography variant="h6">{prodotto.nome}</Typography>
         <Typography variant="body2" color="text.secondary">
