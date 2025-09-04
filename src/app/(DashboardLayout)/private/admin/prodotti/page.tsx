@@ -9,8 +9,7 @@ const Prodotti: React.FC = () => {
   return (
     <PageContainer title="Gestione Prodotti" description="Gestione Prodotti">
       <Grid container spacing={3}>
-        <Grid size={{ sm: 12 }}>
-        </Grid>
+        <Grid size={{ sm: 12 }}></Grid>
         <Grid size={{ sm: 12 }}>
           <Grid size={{ sm: 12 }}>
             <ProductManagementForm />
@@ -22,3 +21,6 @@ const Prodotti: React.FC = () => {
 };
 
 export default Prodotti;
+
+
+
