@@ -160,7 +160,7 @@ const TavoloManagementForm = () => {
         fetchSessioni();
         setOpenSessioneModal(null);
         setNumeroPartecipanti(1);
-        setIsAyce(false);
+        setIsAyce(true);
       } else setErrore('Errore apertura sessione');
     } catch (err) {
       console.error(err);
@@ -296,7 +296,7 @@ const TavoloManagementForm = () => {
               type="number"
               fullWidth
               value={numeroPartecipanti}
-              onChange={(e) => setNumeroPartecipanti(Number(e.target.value) || 1)}
+              onChange={(e) => setNumeroPartecipanti(Number(e.target.value) || 0)}
             />
             <FormControlLabel
               control={<Switch checked={isAyce} onChange={() => setIsAyce(!isAyce)} />}

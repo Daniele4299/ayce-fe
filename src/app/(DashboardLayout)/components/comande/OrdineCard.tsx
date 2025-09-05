@@ -44,6 +44,7 @@ const OrdineCard: React.FC<OrdineCardProps> = ({ ordine, mode, onToggle, isNew }
         whiteSpace: 'nowrap',
         backgroundColor: highlight ? 'rgba(255,255,0,0.4)' : 'transparent',
         transition: 'background-color 0.5s ease-in-out',
+        touchAction: 'manipulation'
       }}
     >
       {mode === 'prodotto' ? (
