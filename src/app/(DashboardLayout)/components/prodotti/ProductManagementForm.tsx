@@ -1,6 +1,6 @@
 'use client';
-import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { Box, Typography, Card, CardContent, Divider, Grid, Dialog, DialogTitle, DialogContent, DialogActions, Button } from '@mui/material';
+import React, { useEffect, useState, useCallback } from 'react';
+import { Box, Typography, Card, CardContent, Divider, Dialog, DialogTitle, DialogContent, DialogActions, Button } from '@mui/material';
 import Filters from '@/app/(DashboardLayout)/components/prodotti/Filters';
 import ProductForm from '@/app/(DashboardLayout)/components/prodotti/ProductForm';
 import ProductList from '@/app/(DashboardLayout)/components/prodotti/ProductList';
@@ -13,12 +13,14 @@ const ProductManagementForm: React.FC = () => {
   const [utenteProdotti, setUtenteProdotti] = useState<Record<number, boolean>>({});
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
 
+  const [role, setRole] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [productToEdit, setProductToEdit] = useState<any>(null);
-
 
   const [filters, setFilters] = useState({
     categoria: 'tutti',
@@ -27,41 +29,62 @@ const ProductManagementForm: React.FC = () => {
     searchText: '',
   });
 
+  // recupero ruolo utente
+  useEffect(() => {
+    async function fetchUserRole() {
+      try {
+        const res = await fetch(`${backendUrl}/auth/me`, {
+          method: 'GET',
+          credentials: 'include',
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setRole(data.role); // il backend manda role come stringa
+          setCurrentUserId(data.id);
+          // carico anche utente-prodotti
+          const utenteProdottiRes = await fetch(`${backendUrl}/api/utente-prodotti/${data.id}`, { credentials: 'include' });
+          if (utenteProdottiRes.ok) {
+            const dataMap = await utenteProdottiRes.json();
+            const map: Record<number, boolean> = {};
+            dataMap.forEach((up: any) => map[up.id.prodottoId] = up.riceveComanda);
+            setUtenteProdotti(map);
+          }
+        } else if (res.status === 401) {
+          window.location.href = '/authentication/login';
+        }
+      } catch (err) {
+        console.error('Errore fetch /auth/me', err);
+        window.location.href = '/authentication/login';
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchUserRole();
+  }, []);
+
+  const fetchData = useCallback(async () => {
+    try {
+      const [catsRes, prodRes] = await Promise.all([
+        fetch(`${backendUrl}/api/categorie`, { credentials: 'include' }),
+        fetch(`${backendUrl}/api/prodotti`, { credentials: 'include' }),
+      ]);
+      if (catsRes.ok) setCategorie(await catsRes.json());
+      if (prodRes.ok) setProdotti(await prodRes.json());
+    } catch (err) { console.error(err); }
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
   const handleAddProduct = () => {
     setProductToEdit(null);
     setModalOpen(true);
   };
 
   const handleEditProduct = (p: any) => {
-      setProductToEdit(p);
-      setModalOpen(true);
+    setProductToEdit(p);
+    setModalOpen(true);
   };
-
-
-  const fetchData = useCallback(async () => {
-    try {
-      const [catsRes, prodRes, userRes] = await Promise.all([
-        fetch(`${backendUrl}/api/categorie`, { credentials: 'include' }),
-        fetch(`${backendUrl}/api/prodotti`, { credentials: 'include' }),
-        fetch(`${backendUrl}/auth/me`, { credentials: 'include' }),
-      ]);
-      if (catsRes.ok) setCategorie(await catsRes.json());
-      if (prodRes.ok) setProdotti(await prodRes.json());
-      if (userRes.ok) {
-        const user = await userRes.json();
-        setCurrentUserId(user.id);
-        const utenteProdottiRes = await fetch(`${backendUrl}/api/utente-prodotti/${user.id}`, { credentials: 'include' });
-        if (utenteProdottiRes.ok) {
-          const data = await utenteProdottiRes.json();
-          const map: Record<number, boolean> = {};
-          data.forEach((up: any) => map[up.id.prodottoId] = up.riceveComanda);
-          setUtenteProdotti(map);
-        }
-      }
-    } catch (err) { console.error(err); }
-  }, []);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
 
   const confirmDelete = (id: number) => { setDeleteId(id); setDeleteDialogOpen(true); };
   const handleDeleteConfirmed = async () => {
@@ -73,14 +96,21 @@ const ProductManagementForm: React.FC = () => {
     setDeleteDialogOpen(false); setDeleteId(null);
   };
 
+  if (loading) {
+    return <Box>Caricamento...</Box>;
+  }
+
   return (
     <Card>
       <CardContent>
         <Typography variant="h5" gutterBottom>Gestione Prodotti</Typography>
 
-        <Button variant="contained" color="primary" onClick={handleAddProduct} sx={{ mb: 2 }}>
-          Aggiungi prodotto
-        </Button>
+        {/* Mostra bottone solo se ADMIN */}
+        {role === 'ADMIN' && (
+          <Button variant="contained" color="primary" onClick={handleAddProduct} sx={{ mb: 2 }}>
+            Aggiungi prodotto
+          </Button>
+        )}
 
         <Dialog open={modalOpen} onClose={() => setModalOpen(false)} maxWidth="md" fullWidth>
           <DialogTitle>{productToEdit ? 'Modifica Prodotto' : 'Aggiungi Prodotto'}</DialogTitle>
@@ -96,7 +126,6 @@ const ProductManagementForm: React.FC = () => {
           </DialogActions>
         </Dialog>
 
-
         <Divider sx={{ my: 3 }} />
 
         <Filters categorie={categorie} filters={filters} setFilters={setFilters} />
@@ -110,8 +139,8 @@ const ProductManagementForm: React.FC = () => {
           setUtenteProdotti={setUtenteProdotti}
           currentUserId={currentUserId}
           onFetchData={fetchData}
-          onEdit={handleEditProduct} 
-          onDelete={confirmDelete}
+          onEdit={role === 'ADMIN' ? handleEditProduct : undefined}
+          onDelete={role === 'ADMIN' ? confirmDelete : undefined}
         />
 
         <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>

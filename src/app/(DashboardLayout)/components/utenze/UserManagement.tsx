@@ -17,6 +17,9 @@ import {
   TextField,
   DialogActions,
   Chip,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
 } from '@mui/material';
 import { Delete, Edit } from '@mui/icons-material';
 
@@ -46,7 +49,7 @@ const UserManagement = ({ readOnly = false }: { readOnly?: boolean }) => {
   const [formData, setFormData] = useState({
     username: '',
     password: '',
-    livello: 0
+    livello: 0,
   });
 
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
@@ -101,7 +104,10 @@ const UserManagement = ({ readOnly = false }: { readOnly?: boolean }) => {
       method,
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ ...formData, livello: parseInt(`${formData.livello}`) }),
+      body: JSON.stringify({
+        ...formData,
+        livello: parseInt(`${formData.livello}`, 10),
+      }),
     });
 
     handleClose();
@@ -125,7 +131,7 @@ const UserManagement = ({ readOnly = false }: { readOnly?: boolean }) => {
           <TableRow>
             <TableCell>Username</TableCell>
             <TableCell>Ruolo</TableCell>
-            { !readOnly && <TableCell>Azioni</TableCell> }
+            {!readOnly && <TableCell>Azioni</TableCell>}
           </TableRow>
         </TableHead>
         <TableBody>
@@ -135,8 +141,12 @@ const UserManagement = ({ readOnly = false }: { readOnly?: boolean }) => {
               <TableCell>{ruoloLabel(utente.livello)}</TableCell>
               {!readOnly && (
                 <TableCell>
-                  <IconButton onClick={() => handleOpenForm(utente)}><Edit /></IconButton>
-                  <IconButton onClick={() => handleDelete(utente.id)}><Delete /></IconButton>
+                  <IconButton onClick={() => handleOpenForm(utente)}>
+                    <Edit />
+                  </IconButton>
+                  <IconButton onClick={() => handleDelete(utente.id)}>
+                    <Delete />
+                  </IconButton>
                 </TableCell>
               )}
             </TableRow>
@@ -161,17 +171,24 @@ const UserManagement = ({ readOnly = false }: { readOnly?: boolean }) => {
             onChange={handleChange}
             helperText={editingUser ? 'Lascia vuoto per non cambiare la password' : ''}
           />
-          <TextField
-            label="Livello"
+
+          {/* 👇 RadioGroup al posto di TextField numerico */}
+          <Typography variant="subtitle2">Ruolo</Typography>
+          <RadioGroup
+            row
             name="livello"
-            type="number"
             value={formData.livello}
-            onChange={handleChange}
-          />
+            onChange={(e) => setFormData({ ...formData, livello: parseInt(e.target.value, 10) })}
+          >
+            <FormControlLabel value={0} control={<Radio />} label="Amministratore" />
+            <FormControlLabel value={1} control={<Radio />} label="Dipendente" />
+          </RadioGroup>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleClose}>Annulla</Button>
-          <Button onClick={handleSubmit} variant="contained">Salva</Button>
+          <Button onClick={handleSubmit} variant="contained">
+            Salva
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

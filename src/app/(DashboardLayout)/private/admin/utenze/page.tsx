@@ -1,14 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Grid, Box, Typography } from '@mui/material';
 import PageContainer from '@/app/(DashboardLayout)/components/container/PageContainer';
 import UserManagement from '@/app/(DashboardLayout)/components/utenze/UserManagement';
 
 const Utenze = () => {
-  const router = useRouter();
-  const [role, setRole] = useState<number | null>(null);
+  const [role, setRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -22,7 +20,7 @@ const Utenze = () => {
 
         if (res.ok) {
           const data = await res.json();
-          setRole(data.livello);
+          setRole(data.role); // <-- backend manda role come stringa
         } else if (res.status === 401) {
           window.location.href = '/authentication/login';
         } else {
@@ -39,13 +37,22 @@ const Utenze = () => {
     fetchUserRole();
   }, []);
 
-  if (loading) return <PageContainer title="Utenze" description=""><Box>Caricamento...</Box></PageContainer>;
+  if (loading) {
+    return (
+      <PageContainer title="Utenze" description="">
+        <Box>Caricamento...</Box>
+      </PageContainer>
+    );
+  }
 
-  if (role === null || role >= 2) {
+  // Se non sei admin → accesso negato
+  if (role !== 'ADMIN') {
     return (
       <PageContainer title="Accesso Negato" description="">
         <Box p={2}>
-          <Typography variant="h6" color="error">Non hai i permessi per visualizzare questa pagina.</Typography>
+          <Typography variant="h6" color="error">
+            Non hai i permessi per visualizzare questa pagina.
+          </Typography>
         </Box>
       </PageContainer>
     );
@@ -54,11 +61,11 @@ const Utenze = () => {
   return (
     <PageContainer title="Gestione Utenze" description="Gestione Utenze">
       <Box mb={2}>
-        <Typography variant="subtitle2">Ruolo utente: {role === 0 ? 'Amministratore' : 'Dipendente'}</Typography>
+        <Typography variant="subtitle2">Ruolo utente: {role}</Typography>
       </Box>
       <Grid container spacing={3}>
-        <Grid size={{ xs: 12, lg: 10 }}>
-          <UserManagement readOnly={role !== 0} />
+        <Grid>
+          <UserManagement />
         </Grid>
       </Grid>
     </PageContainer>

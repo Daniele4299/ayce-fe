@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Grid, Box } from '@mui/material';
+import { Grid, Box, Typography } from '@mui/material';
 import PageContainer from '@/app/(DashboardLayout)/components/container/PageContainer';
 // components
 import SalesOverview from '@/app/(DashboardLayout)/components/dashboard/SalesOverview';
@@ -16,34 +16,56 @@ import MonthlyEarnings from '@/app/(DashboardLayout)/components/dashboard/Monthl
 const Dashboard = () => {
   const router = useRouter();
   const [role, setRole] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-useEffect(() => {
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
-  async function fetchUserRole() {
-    try {
-      const res = await fetch(`${backendUrl}/auth/me`, {
-        method: 'GET',
-        credentials: 'include',
-      });
+  useEffect(() => {
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+    async function fetchUserRole() {
+      try {
+        const res = await fetch(`${backendUrl}/auth/me`, {
+          method: 'GET',
+          credentials: 'include',
+        });
 
-      if (res.ok) {
-        const data = await res.json();
-        setRole(data.ruolo);
-      } else if (res.status === 401) {
-        // 🔥 Forza redirect con ricarica completa
+        if (res.ok) {
+          const data = await res.json();
+          setRole(data.role); // <-- backend manda role come stringa
+        } else if (res.status === 401) {
+          window.location.href = '/authentication/login';
+        } else {
+          console.error('Errore nel recupero del ruolo utente');
+        }
+      } catch (error) {
+        console.error('Errore fetch /auth/me', error);
         window.location.href = '/authentication/login';
-      } else {
-        console.error('Errore nel recupero del ruolo utente');
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Errore fetch /auth/me', error);
-      // Fallimento fetch -> considera redirect
-      window.location.href = '/authentication/login';
     }
+
+    fetchUserRole();
+  }, []);
+
+  if (loading) {
+    return (
+      <PageContainer title="Utenze" description="">
+        <Box>Caricamento...</Box>
+      </PageContainer>
+    );
   }
 
-  fetchUserRole();
-}, []);
+  // Se non sei admin → accesso negato
+  if (role !== 'ADMIN') {
+    return (
+      <PageContainer title="Accesso Negato" description="">
+        <Box p={2}>
+          <Typography variant="h6" color="error">
+            Non hai i permessi per visualizzare questa pagina.
+          </Typography>
+        </Box>
+      </PageContainer>
+    );
+  }
 
 
   return (

@@ -140,9 +140,22 @@ const CustomerTablePage = () => {
         console.warn('WebSocket non connesso, forzo refresh');
         window.location.reload();
       }
-    }, 10000); // ogni 10 secondi
+    }, 5000); // ogni 10 secondi
     return () => clearInterval(interval);
   }, []);
+
+  // ---------- Refresh al click se WS disconnesso
+  useEffect(() => {
+    const handleClick = () => {
+      const client = stompClientRef.current;
+      if (!client || !client.connected) {
+        window.location.reload();
+      }
+    };
+    window.addEventListener('click', handleClick);
+    return () => window.removeEventListener('click', handleClick);
+  }, []);
+
 
   // ---------- Timer cooldown
   useEffect(() => {
@@ -168,7 +181,6 @@ const CustomerTablePage = () => {
   const modificaQuantita = useCallback((idProdotto: number, delta: number, categoria: number) => {
     const client = stompClientRef.current;
     if (!client?.connected) {
-      alert('Connessione persa, la pagina verrà ricaricata per ripristinarla');
       window.location.reload();
       return;
     }
@@ -200,7 +212,6 @@ const CustomerTablePage = () => {
   const inviaOrdine = useCallback(() => {
     const client = stompClientRef.current;
     if (!client?.connected) {
-      alert('Connessione persa, la pagina verrà ricaricata per ripristinarla');
       window.location.reload();
       return;
     }

@@ -13,8 +13,8 @@ interface ProductListProps {
   setUtenteProdotti: React.Dispatch<React.SetStateAction<Record<number, boolean>>>;
   currentUserId:number|null;
   onFetchData:()=>void;
-  onEdit:(p:any)=>void;
-  onDelete:(id:number)=>void;
+  onEdit?: (p:any)=>void; 
+  onDelete?: (id:number)=>void; 
 }
 
 const PAGE_SIZE = 50;
@@ -83,7 +83,7 @@ const ProductList: React.FC<ProductListProps> = ({ prodotti, filters, utenteProd
         </Box>
       )}
 
-      <Box ref={parentRef} sx={{ height: 600, overflow: 'auto', mt: 1 }}>
+      <Box ref={parentRef} sx={{ height: 350, overflow: 'auto', mt: 1 }}>
         <Box sx={{ height: `${rowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}>
           {rowVirtualizer.getVirtualItems().map((virtualRow: VirtualItem) => {
             const p = filteredProdotti[virtualRow.index];
@@ -131,8 +131,13 @@ const ProductList: React.FC<ProductListProps> = ({ prodotti, filters, utenteProd
                       {utenteProdotti && currentUserId && (
                         <FormControlLabel control={<Checkbox checked={utenteProdotti[p.id] || false} onChange={e => toggleRiceveComanda(p.id, e.target.checked)} />} label="Ricevi comanda" />
                       )}
-                      <Button size="small" variant="outlined" onClick={() => onEdit(p)}>Modifica</Button>
-                      <Button size="small" variant="outlined" color="error" onClick={() => onDelete(p.id)}>Elimina</Button>
+                      {onEdit && (
+  <Button size="small" variant="outlined" onClick={() => onEdit(p)}>Modifica</Button>
+)}
+{onDelete && (
+  <Button size="small" variant="outlined" color="error" onClick={() => onDelete(p.id)}>Elimina</Button>
+)}
+
                     </Box>
                   </Box>
                 </Card>
