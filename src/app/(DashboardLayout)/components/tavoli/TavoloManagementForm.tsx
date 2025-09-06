@@ -27,7 +27,19 @@ type Sessione = {
   numeroPartecipanti: number | null;
   isAyce: boolean;
   stato: string;
+  ultimoOrdineInviato?: string | null;
 };
+
+type ResocontoDto = {
+  nome: string;             
+  quantita: number;
+  prezzoUnitario: number;
+  totale: number;
+  orario: string | null;    
+  tavolo: number | null;
+  stato: string | null;
+};
+
 
 const TavoloManagementForm = () => {
   const [tavoli, setTavoli] = useState<Tavolo[]>([]);
@@ -42,25 +54,28 @@ const TavoloManagementForm = () => {
   const [confirmDisattiva, setConfirmDisattiva] = useState<null | Sessione>(null);
   const [openAddModal, setOpenAddModal] = useState(false);
 
+  // nuovi stati per Resoconto
+  const [openResocontoModal, setOpenResocontoModal] = useState<null | Sessione>(null);
+  const [resoconto, setResoconto] = useState<ResocontoDto[]>([]);
+  const [confirmReset, setConfirmReset] = useState<null | Sessione>(null);
+
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
 
   const fetchTavoli = async () => {
-  try {
-    const res = await fetch(`${backendUrl}/api/tavoli`, { credentials: 'include' });
-    if (res.ok) {
-      const dati = await res.json();
-      // Mostra solo tavoli attivi e ordina per numero tavolo
-      setTavoli(
-        dati
-          .filter((t: Tavolo) => t.attivo)
-          .sort((a: Tavolo, b: Tavolo) => a.numero - b.numero)
-      );
+    try {
+      const res = await fetch(`${backendUrl}/api/tavoli`, { credentials: 'include' });
+      if (res.ok) {
+        const dati = await res.json();
+        setTavoli(
+          dati
+            .filter((t: Tavolo) => t.attivo)
+            .sort((a: Tavolo, b: Tavolo) => a.numero - b.numero)
+        );
+      }
+    } catch (err) {
+      console.error('Errore recupero tavoli', err);
     }
-  } catch (err) {
-    console.error('Errore recupero tavoli', err);
-  }
-};
-
+  };
 
   const fetchSessioni = async () => {
     try {
@@ -93,7 +108,7 @@ const TavoloManagementForm = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ numero, attivo: true }), // tavolo attivo di default
+        body: JSON.stringify({ numero, attivo: true }),
       });
       if (res.ok) {
         setNumero(0);
@@ -111,7 +126,7 @@ const TavoloManagementForm = () => {
   const deleteTavolo = async (tavolo: Tavolo) => {
     try {
       const res = await fetch(`${backendUrl}/api/tavoli/${tavolo.id}`, {
-        method: 'DELETE', // backend deve gestire cascade
+        method: 'DELETE',
         credentials: 'include',
       });
       if (res.ok) fetchTavoli();
@@ -122,50 +137,42 @@ const TavoloManagementForm = () => {
     }
   };
 
-const disattivaSessione = async (sessione: Sessione) => {
-  // apro subito la finestra vuota
-  const win = window.open('', '_blank');
+  const disattivaSessione = async (sessione: Sessione) => {
+    const win = window.open('', '_blank');
+    try {
+      const res = await fetch(`${backendUrl}/api/sessioni/${sessione.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ ...sessione, stato: 'CHIUSA' }),
+      });
 
-  try {
-    // chiudo la sessione
-    const res = await fetch(`${backendUrl}/api/sessioni/${sessione.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ ...sessione, stato: 'CHIUSA' }),
-    });
+      if (!res.ok) {
+        console.error('Errore chiusura sessione');
+        win?.close();
+        return;
+      }
 
-    if (!res.ok) {
-      console.error('Errore chiusura sessione');
+      fetchSessioni();
+      fetchTavoli();
+
+      const pdfRes = await fetch(`${backendUrl}/api/sessioni/${sessione.id}/pdf`, { credentials: 'include' });
+      if (!pdfRes.ok) {
+        console.error('Errore download PDF');
+        win?.close();
+        return;
+      }
+
+      const blob = await pdfRes.blob();
+      const url = URL.createObjectURL(blob);
+      win!.location.href = url;
+    } catch (err) {
+      console.error(err);
       win?.close();
-      return;
+    } finally {
+      setConfirmDisattiva(null);
     }
-
-    fetchSessioni();
-    fetchTavoli();
-
-    // scarico il PDF
-    const pdfRes = await fetch(`${backendUrl}/api/sessioni/${sessione.id}/pdf`, { credentials: 'include' });
-    if (!pdfRes.ok) {
-      console.error('Errore download PDF');
-      win?.close();
-      return;
-    }
-
-    const blob = await pdfRes.blob();
-    const url = URL.createObjectURL(blob);
-
-    // assegno l'URL alla finestra già aperta
-    win!.location.href = url;
-  } catch (err) {
-    console.error(err);
-    win?.close();
-  } finally {
-    setConfirmDisattiva(null);
-  }
-};
-
-
+  };
 
   const apriSessione = async (tavolo: Tavolo) => {
     if (!numeroPartecipanti || numeroPartecipanti < 1) {
@@ -204,16 +211,56 @@ const disattivaSessione = async (sessione: Sessione) => {
   const getSessioneTavolo = (tavoloId: number) =>
     sessioni.find((s) => s.tavolo && s.tavolo.id === tavoloId && s.stato === 'ATTIVA');
 
+  // 🔹 nuovo: carica resoconto
+  const fetchResoconto = async (sessione: Sessione) => {
+    try {
+      const res = await fetch(`${backendUrl}/api/sessioni/${sessione.id}/resoconto`, { credentials: 'include' });
+      if (res.ok) {
+        setResoconto(await res.json());
+        setOpenResocontoModal(sessione);
+      }
+    } catch (err) {
+      console.error('Errore recupero resoconto', err);
+    }
+  };
+
+  // 🔹 nuovo: reset timer via update
+  const resetTimer = async (sessione: Sessione) => {
+    try {
+      const res = await fetch(`${backendUrl}/api/sessioni/${sessione.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ ...sessione, ultimoOrdineInviato: null }),
+      });
+      if (res.ok) {
+        fetchSessioni();
+      }
+    } catch (err) {
+      console.error('Errore reset timer', err);
+    } finally {
+      setConfirmReset(null);
+    }
+  };
+
   return (
     <Card>
       <CardContent>
         <Typography variant="h6" gutterBottom>Gestione Tavoli</Typography>
 
         {errore && <Alert severity="error" sx={{ mb: 2 }}>{errore}</Alert>}
+<Box mb={2} display="flex" justifyContent="space-between">
+  <Button variant="contained" onClick={() => setOpenAddModal(true)}>Aggiungi Tavolo</Button>
+  <Button 
+    variant="contained" color="secondary" 
+    onClick={() => window.open(`${backendUrl}/api/qr/pdf`, '_blank')}
+  >
+    Genera PDF QR
+  </Button>
+</Box>
 
-        <Box mb={2}>
-          <Button variant="contained" onClick={() => setOpenAddModal(true)}>Aggiungi Tavolo</Button>
-        </Box>
+
+        
 
         <Grid container spacing={2}>
           {tavoli.map((t) => {
@@ -250,9 +297,14 @@ const disattivaSessione = async (sessione: Sessione) => {
                   </Box>
                   <Box display="flex" alignItems="center" gap={2}>
                     {sessione ? (
-                      <Button variant="outlined" color="warning" onClick={() => setConfirmDisattiva(sessione)}>
-                        Disattiva
-                      </Button>
+                      <>
+                        <Button variant="outlined" color="info" onClick={() => fetchResoconto(sessione)}>
+                          Resoconto
+                        </Button>
+                        <Button variant="outlined" color="warning" onClick={() => setConfirmDisattiva(sessione)}>
+                          Disattiva
+                        </Button>
+                      </>
                     ) : (
                       <Button variant="outlined" color="success" onClick={() => setOpenSessioneModal(t)}>
                         Apri Sessione
@@ -340,6 +392,52 @@ const disattivaSessione = async (sessione: Sessione) => {
             <Button onClick={() => setOpenSessioneModal(null)}>Annulla</Button>
             <Button variant="contained" color="primary" onClick={() => openSessioneModal && apriSessione(openSessioneModal)}>
               Apri
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Modale Resoconto */}
+{/* Modale Resoconto */}
+<Dialog open={!!openResocontoModal} onClose={() => setOpenResocontoModal(null)} maxWidth="md" fullWidth>
+  <DialogTitle>Resoconto Tavolo #{openResocontoModal?.tavolo?.numero}</DialogTitle>
+  <DialogContent>
+    {resoconto.length > 0 ? (
+      resoconto.map((r, idx) => (
+        <Box key={idx} mb={2} p={2} border={1} borderColor="grey.300" borderRadius={2}>
+          <Typography variant="body2"><b>Prodotto:</b> {r.nome}</Typography>
+          <Typography variant="body2"><b>Quantità:</b> {r.quantita}</Typography>
+          <Typography variant="body2"><b>Prezzo unitario:</b> € {r.prezzoUnitario.toFixed(2)}</Typography>
+          <Typography variant="body2"><b>Totale riga:</b> € {r.totale.toFixed(2)}</Typography>
+          {r.orario && (
+            <Typography variant="body2"><b>Ora:</b> {new Date(r.orario).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Typography>
+          )}
+          {r.stato && <Typography variant="body2"><b>Stato consegna:</b> {r.stato}</Typography>}
+        </Box>
+      ))
+    ) : (
+      <Typography variant="body2">Nessun ordine registrato</Typography>
+    )}
+  </DialogContent>
+  <DialogActions>
+    {openResocontoModal?.isAyce && (
+      <Button color="warning" onClick={() => setConfirmReset(openResocontoModal)}>
+        Resetta timer ordinazione
+      </Button>
+    )}
+    <Button onClick={() => setOpenResocontoModal(null)}>Chiudi</Button>
+  </DialogActions>
+</Dialog>
+
+        {/* Modale conferma reset timer */}
+        <Dialog open={!!confirmReset} onClose={() => setConfirmReset(null)}>
+          <DialogTitle>Conferma reset timer</DialogTitle>
+          <DialogContent>
+            Vuoi davvero resettare il timer ordinazione per il Tavolo #{confirmReset?.tavolo?.numero}?
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setConfirmReset(null)}>Annulla</Button>
+            <Button color="warning" onClick={() => confirmReset && resetTimer(confirmReset)}>
+              Conferma
             </Button>
           </DialogActions>
         </Dialog>
