@@ -43,6 +43,9 @@ const CustomerTablePage = () => {
   const prodottiRef = useRef(prodotti);
   const sessioneRef = useRef(sessione);
 
+  const [sessioneCompleta, setSessioneCompleta] = useState<any>(null);
+
+
   useEffect(() => { ordineRef.current = ordine; }, [ordine]);
   useEffect(() => { prodottiRef.current = prodotti; }, [prodotti]);
   useEffect(() => { sessioneRef.current = sessione; }, [sessione]);
@@ -67,6 +70,28 @@ const CustomerTablePage = () => {
     };
     checkSessione();
   }, [numTavolo, backendUrl, router]);
+
+  // ----------- Recupero sessione completa
+  useEffect(() => {
+  const fetchSessioneCompleta = async () => {
+    if (!sessioneRef.current?.sessioneId) return;
+
+    try {
+      const res = await fetch(`${backendUrl}/api/sessioni/${sessioneRef.current.sessioneId}`, {
+        credentials: 'include'
+      });
+      if (!res.ok) throw new Error('Errore fetch sessione completa');
+      const data = await res.json();
+      setSessioneCompleta(data);
+      console.log('sessioneCompleta:', data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  fetchSessioneCompleta();
+}, [sessione]); // esegue dopo che lo stato sessione cambia
+
 
   // ---------- Recupero prodotti
   useEffect(() => {
@@ -140,7 +165,7 @@ const CustomerTablePage = () => {
         console.warn('WebSocket non connesso, forzo refresh');
         window.location.reload();
       }
-    }, 5000); // ogni 10 secondi
+    }, 10000); // ogni 10 secondi
     return () => clearInterval(interval);
   }, []);
 
@@ -188,6 +213,8 @@ const CustomerTablePage = () => {
     const sess = sessioneRef.current;
     const ord = ordineRef.current;
     const prods = prodottiRef.current;
+
+    console.log('sessioneRef.current:', sessioneRef.current);
 
     if (categoria < 100 && sess?.isAyce) {
       let totalNormal = 0;
@@ -267,6 +294,18 @@ const CustomerTablePage = () => {
 
   const capitalize = useCallback((s?: string) => s ? s.charAt(0).toUpperCase() + s.toLowerCase().slice(1) : '', []);
 
+  const numPortateSelezionate = Object.entries(ordine)
+  .filter(([id, q]) => {
+    const prod = prodotti.find(p => p.id === Number(id));
+    return !!prod && ((prod.categoria?.id ?? 0) < 100) && Number(q) > 0;
+  })
+  .reduce((sum, [, q]) => sum + Number(q), 0);
+
+const numPortateMax = sessioneCompleta?.numeroPartecipanti
+  ? sessioneCompleta.numeroPartecipanti * 5
+  : 0;
+
+  
   // ---------- Early guards
   if (loading) return <CircularProgress sx={{ m: 4 }} />;
   if (errore) return <Alert severity="error" sx={{ m: 4 }}>{errore}</Alert>;
@@ -302,6 +341,8 @@ const CustomerTablePage = () => {
         cooldown={cooldown}
         inviaOrdine={inviaOrdine}
         fetchStorico={fetchStorico}
+        totalPortate={numPortateSelezionate}
+        maxPortate={numPortateMax}
       />
 
       <StoricoDialog open={storicoOpen} storico={storico} onClose={() => setStoricoOpen(false)} />

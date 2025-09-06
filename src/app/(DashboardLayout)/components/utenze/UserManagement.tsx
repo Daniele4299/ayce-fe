@@ -46,6 +46,9 @@ const UserManagement = ({ readOnly = false }: { readOnly?: boolean }) => {
   const [open, setOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<Utente | null>(null);
 
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<Utente | null>(null);
+
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -55,9 +58,7 @@ const UserManagement = ({ readOnly = false }: { readOnly?: boolean }) => {
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
 
   const fetchUtenti = async () => {
-    const res = await fetch(`${backendUrl}/api/utenti`, {
-      credentials: 'include',
-    });
+    const res = await fetch(`${backendUrl}/api/utenti`, { credentials: 'include' });
     const data = await res.json();
     setUtenti(data);
   };
@@ -66,12 +67,26 @@ const UserManagement = ({ readOnly = false }: { readOnly?: boolean }) => {
     fetchUtenti();
   }, []);
 
-  const handleDelete = async (id: number) => {
-    await fetch(`${backendUrl}/api/utenti/${id}`, {
+  // 👇 Apri la modale di conferma
+  const handleDeleteClick = (utente: Utente) => {
+    setUserToDelete(utente);
+    setConfirmDeleteOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!userToDelete) return;
+    await fetch(`${backendUrl}/api/utenti/${userToDelete.id}`, {
       method: 'DELETE',
       credentials: 'include',
     });
+    setConfirmDeleteOpen(false);
+    setUserToDelete(null);
     fetchUtenti();
+  };
+
+  const handleCancelDelete = () => {
+    setConfirmDeleteOpen(false);
+    setUserToDelete(null);
   };
 
   const handleOpenForm = (utente?: Utente) => {
@@ -104,10 +119,7 @@ const UserManagement = ({ readOnly = false }: { readOnly?: boolean }) => {
       method,
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({
-        ...formData,
-        livello: parseInt(`${formData.livello}`, 10),
-      }),
+      body: JSON.stringify({ ...formData, livello: parseInt(`${formData.livello}`, 10) }),
     });
 
     handleClose();
@@ -144,7 +156,7 @@ const UserManagement = ({ readOnly = false }: { readOnly?: boolean }) => {
                   <IconButton onClick={() => handleOpenForm(utente)}>
                     <Edit />
                   </IconButton>
-                  <IconButton onClick={() => handleDelete(utente.id)}>
+                  <IconButton onClick={() => handleDeleteClick(utente)}>
                     <Delete />
                   </IconButton>
                 </TableCell>
@@ -154,6 +166,7 @@ const UserManagement = ({ readOnly = false }: { readOnly?: boolean }) => {
         </TableBody>
       </Table>
 
+      {/* Form utente */}
       <Dialog open={open} onClose={handleClose}>
         <DialogTitle>{editingUser ? 'Modifica Utente' : 'Nuovo Utente'}</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
@@ -171,8 +184,6 @@ const UserManagement = ({ readOnly = false }: { readOnly?: boolean }) => {
             onChange={handleChange}
             helperText={editingUser ? 'Lascia vuoto per non cambiare la password' : ''}
           />
-
-          {/* 👇 RadioGroup al posto di TextField numerico */}
           <Typography variant="subtitle2">Ruolo</Typography>
           <RadioGroup
             row
@@ -188,6 +199,23 @@ const UserManagement = ({ readOnly = false }: { readOnly?: boolean }) => {
           <Button onClick={handleClose}>Annulla</Button>
           <Button onClick={handleSubmit} variant="contained">
             Salva
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Modale conferma eliminazione */}
+      <Dialog open={confirmDeleteOpen} onClose={handleCancelDelete}>
+        <DialogTitle>Conferma Eliminazione</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Sei sicuro di voler eliminare l'utente{' '}
+            <strong>{userToDelete?.username}</strong>?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCancelDelete}>Annulla</Button>
+          <Button onClick={handleConfirmDelete} color="error" variant="contained">
+            Elimina
           </Button>
         </DialogActions>
       </Dialog>

@@ -1,7 +1,22 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
-import { Grid, CircularProgress, Alert, FormControl, InputLabel, Select, MenuItem, Switch, Box, Card, CardContent, Typography, Divider, Button } from '@mui/material';
+import {
+  Grid,
+  CircularProgress,
+  Alert,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Switch,
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Divider,
+  Button,
+} from '@mui/material';
 import PageContainer from '@/app/(DashboardLayout)/components/container/PageContainer';
 import OrdineCard from '@/app/(DashboardLayout)/components/comande/OrdineCard';
 import SockJS from 'sockjs-client';
@@ -23,6 +38,8 @@ const Comande = () => {
   const [errore, setErrore] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'prodotto' | 'tavolo'>('prodotto');
   const [audioEnabled, setAudioEnabled] = useState(true);
+  const [cardHeight, setCardHeight] = useState(500);
+
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
   const prevOrdiniRef = useRef<number[]>([]);
   const audio = useRef<HTMLAudioElement | null>(null);
@@ -30,51 +47,91 @@ const Comande = () => {
   const mostraTuttiProdottiRef = useRef(false);
   const nascondiConsegnatiRef = useRef(true);
 
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [highlightedCards, setHighlightedCards] = useState<Record<string, boolean>>({});
+
+  const draggingKeyRef = useRef<string | null>(null);
+  const dragActiveKeyRef = useRef<string | null>(null);
+
   useEffect(() => {
     audio.current = new Audio('/notification.mp3');
   }, []);
 
-  const fetchOrdini = useCallback(async () => {
-    const res = await fetch(`${backendUrl}/api/private/comande/filtrate?soloAssegnati=${!mostraTuttiProdottiRef.current}&nascondiConsegnati=${nascondiConsegnatiRef.current}`, { credentials: 'include' });
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const mq = window.matchMedia('(orientation: portrait)');
+    const calcHeight = () => {
+      setCardHeight(Math.round(mq.matches ? window.innerHeight * 0.6 : window.innerHeight * 0.8));
+    };
+    calcHeight();
+
+    if (mq.addEventListener) {
+      mq.addEventListener('change', calcHeight);
+      return () => mq.removeEventListener('change', calcHeight);
+    } else {
+      mq.addListener(calcHeight);
+      return () => mq.removeListener(calcHeight);
+    }
+  }, []);
+
+  const fetchOrdini = useCallback(async (): Promise<Ordine[]> => {
+    const res = await fetch(
+      `${backendUrl}/api/private/comande/filtrate?soloAssegnati=${!mostraTuttiProdottiRef.current}&nascondiConsegnati=${nascondiConsegnatiRef.current}`,
+      { credentials: 'include' }
+    );
     if (!res.ok) throw new Error('Errore caricamento comande');
-    const data: Ordine[] = await res.json();
-    return data;
+    return res.json();
   }, [backendUrl]);
 
-  const refresh = useCallback(async (playAudio = false) => {
-    try {
-      const data = await fetchOrdini();
-      const prevIds = prevOrdiniRef.current;
-      const newOrders = data.filter(o => !prevIds.includes(o.id));
-      if (playAudio && newOrders.length > 0 && audioEnabled) audio.current?.play().catch(() => {});
-      prevOrdiniRef.current = data.map(o => o.id);
-      setOrdini(data);
-    } catch (err) {
-      console.error(err);
-      setErrore('Errore durante il caricamento delle comande');
-    }
-  }, [fetchOrdini, audioEnabled]);
+  const refresh = useCallback(
+    async (playAudio = false, isWebsocketUpdate = false) => {
+      try {
+        const data = await fetchOrdini();
+        const newOrders = data.filter((o) => !prevOrdiniRef.current.includes(o.id));
+
+        if (playAudio && newOrders.length > 0 && audioEnabled) {
+          audio.current?.play().catch(() => {});
+        }
+
+        if (isWebsocketUpdate) {
+          const newHighlighted: Record<string, boolean> = {};
+          for (const o of newOrders) {
+            const key = viewMode === 'prodotto' ? o.prodotto?.nome ?? 'Sconosciuto' : String(o.tavolo?.numero ?? '-');
+            newHighlighted[key] = true;
+          }
+          setHighlightedCards((prev) => ({ ...prev, ...newHighlighted }));
+        }
+
+        prevOrdiniRef.current = data.map((o) => o.id);
+        setOrdini(data);
+      } catch (err) {
+        console.error(err);
+        setErrore('Errore durante il caricamento delle comande');
+      }
+    },
+    [fetchOrdini, audioEnabled, viewMode]
+  );
 
   useEffect(() => {
     setLoading(true);
     refresh().finally(() => setLoading(false));
   }, [refresh]);
 
-  // WEBSOCKET
   useEffect(() => {
     const setupWebSocket = async () => {
       const client = new Client({
         brokerURL: undefined,
         connectHeaders: {},
-        debug: (str) => console.log(str),
+        debug: console.log,
         reconnectDelay: 5000,
-        webSocketFactory: () => new SockJS(`${backendUrl}/ws`)
+        webSocketFactory: () => new SockJS(`${backendUrl}/ws`),
       });
       client.onConnect = () => {
-        client.subscribe('/topic/cucina', (message: IMessage) => {
-          const msg = JSON.parse(message.body);
-          if (msg.tipoEvento === 'ORDER_SENT') refresh(true);
-          else if (msg.tipoEvento === 'CONSEGNA_CHANGED') refresh();
+        client.subscribe('/topic/cucina', (msg: IMessage) => {
+          const data = JSON.parse(msg.body);
+          if (['ORDER_SENT', 'CONSEGNA_CHANGED'].includes(data.tipoEvento)) refresh(true, true);
         });
       };
       client.activate();
@@ -88,10 +145,11 @@ const Comande = () => {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ id: ordine.id, flagConsegnato: checked })
+        body: JSON.stringify({ id: ordine.id, flagConsegnato: checked }),
       });
+
       if (viewMode === 'prodotto' && checked && nascondiConsegnatiRef.current) {
-        setOrdini(prev => prev.filter(o => o.id !== ordine.id));
+        setOrdini((prev) => prev.filter((o) => o.id !== ordine.id));
       } else refresh();
     } catch (err) {
       console.error(err);
@@ -101,43 +159,61 @@ const Comande = () => {
 
   const gruppiMap = useMemo(() => {
     const map: Record<string, { titolo: string; ordini: Ordine[]; tavoloNumero?: string }> = {};
-    for (const o of ordini) {
+    ordini.forEach((o) => {
       const key = viewMode === 'prodotto' ? o.prodotto?.nome ?? 'Sconosciuto' : String(o.tavolo?.numero ?? '-');
-      if (!map[key]) map[key] = { titolo: viewMode === 'prodotto' ? key : `Tavolo ${key}`, ordini: [], tavoloNumero: viewMode === 'tavolo' ? key : undefined };
+      if (!map[key]) {
+        map[key] = {
+          titolo: viewMode === 'prodotto' ? key : `Tavolo ${key}`,
+          ordini: [],
+          tavoloNumero: viewMode === 'tavolo' ? key : undefined,
+        };
+      }
       map[key].ordini.push(o);
-    }
+    });
+    Object.values(map).forEach((g) =>
+      g.ordini.sort((a, b) => new Date(a.orario).getTime() - new Date(b.orario).getTime())
+    );
     return map;
   }, [ordini, viewMode]);
 
   const gruppiArrayArrivalOrder = useMemo(() => Object.values(gruppiMap), [gruppiMap]);
   const [groupsOrder, setGroupsOrder] = useState<string[]>([]);
-  const draggingKeyRef = useRef<string | null>(null);
-  const dragActiveKeyRef = useRef<string | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    const arrivalKeys = gruppiArrayArrivalOrder.map(g => g.titolo);
-    setGroupsOrder(prev => {
-      if (prev.length === 0) return arrivalKeys;
-      const newOrder = prev.filter(k => arrivalKeys.includes(k));
-      for (const k of arrivalKeys) if (!newOrder.includes(k)) newOrder.push(k);
+    const arrivalKeys = gruppiArrayArrivalOrder.map((g) => g.titolo);
+    setGroupsOrder((prev) => {
+      if (!prev.length) return arrivalKeys;
+      const newOrder = prev.filter((k) => arrivalKeys.includes(k));
+      arrivalKeys.forEach((k) => { if (!newOrder.includes(k)) newOrder.push(k); });
       return newOrder;
     });
   }, [gruppiArrayArrivalOrder]);
 
   const gruppiByTitle = useMemo(() => {
     const map: Record<string, typeof gruppiArrayArrivalOrder[0]> = {};
-    for (const g of gruppiArrayArrivalOrder) map[g.titolo] = g;
+    gruppiArrayArrivalOrder.forEach((g) => (map[g.titolo] = g));
     return map;
   }, [gruppiArrayArrivalOrder]);
 
   const resetToArrivalOrder = () => {
-    setGroupsOrder(gruppiArrayArrivalOrder.map(g => g.titolo));
+    const sortedKeys = gruppiArrayArrivalOrder
+      .map((g) => ({
+        titolo: g.titolo,
+        minOrario: g.ordini.length ? Math.min(...g.ordini.map((o) => new Date(o.orario).getTime())) : Infinity,
+      }))
+      .sort((a, b) => a.minOrario - b.minOrario)
+      .map((g) => g.titolo);
+    setGroupsOrder(sortedKeys);
   };
 
   const onHandleMouseDown = (key: string) => (e: React.MouseEvent | React.TouchEvent) => {
     draggingKeyRef.current = key;
-    const clear = () => { draggingKeyRef.current = null; window.removeEventListener('mouseup', clear); window.removeEventListener('touchend', clear); };
+    setHighlightedCards((prev) => ({ ...prev, [key]: false }));
+    const clear = () => {
+      draggingKeyRef.current = null;
+      window.removeEventListener('mouseup', clear);
+      window.removeEventListener('touchend', clear);
+    };
     window.addEventListener('mouseup', clear);
     window.addEventListener('touchend', clear);
   };
@@ -158,13 +234,15 @@ const Comande = () => {
     e.preventDefault();
     const draggedKey = dragActiveKeyRef.current ?? e.dataTransfer.getData('text/plain');
     if (!draggedKey || draggedKey === targetKey) return;
-    setGroupsOrder(prev => {
-      const newOrder = [...prev.filter(k => k !== draggedKey)];
+
+    setGroupsOrder((prev) => {
+      const newOrder = prev.filter((k) => k !== draggedKey);
       const idx = newOrder.indexOf(targetKey);
       if (idx === -1) newOrder.push(draggedKey);
       else newOrder.splice(idx, 0, draggedKey);
       return newOrder;
     });
+
     dragActiveKeyRef.current = null;
     draggingKeyRef.current = null;
   };
@@ -174,111 +252,170 @@ const Comande = () => {
     draggingKeyRef.current = null;
   };
 
-  const orderedGruppe = useMemo(() => groupsOrder.map(k => gruppiByTitle[k]).filter(Boolean), [groupsOrder, gruppiByTitle]);
+  const orderedGruppe = useMemo(() => groupsOrder.map((k) => gruppiByTitle[k]).filter(Boolean), [groupsOrder, gruppiByTitle]);
 
   const HeaderRighe = ({ mode }: { mode: 'prodotto' | 'tavolo' }) => (
-    <Box sx={{ display: 'grid', gridTemplateColumns: mode === 'prodotto' ? '90px 120px 120px 1fr 60px' : '1fr 120px 120px 80px 60px', columnGap: 2, py: 1 }}>
-      {['prodotto','tavolo'].includes(mode) && (mode === 'prodotto' ? ['Tavolo','Orario','Persone','Quantità','✓'] : ['Prodotto','Orario','Persone','Quantità','✓'] ).map(t => <Typography key={t} variant="subtitle2">{t}</Typography>) }
+    <Box sx={{ display: 'grid', gridTemplateColumns: mode === 'prodotto' ? '50px 45px 42px 32px 40px' : '190px 45px 42px 60px 60px', columnGap: 2, py: 1 }}>
+      {(mode === 'prodotto' ? ['Tavolo','Ora','Pers.','Qta','✓'] : ['Prod','Ora','Pers.','Qta','✓']).map(t => <Typography key={t} variant="subtitle2">{t}</Typography>)}
     </Box>
   );
 
-  // SCROLL TOUCH-FRIENDLY
-  useEffect(() => {
-    const handleMove = (clientY: number) => {
-      if (!dragActiveKeyRef.current || !containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      const margin = 60;
-      const speed = 20;
-      if (clientY < rect.top + margin) containerRef.current.scrollBy({ top: -speed, behavior: 'smooth' });
-      else if (clientY > rect.bottom - margin) containerRef.current.scrollBy({ top: speed, behavior: 'smooth' });
-    };
-    const onMouseMove = (e: MouseEvent) => handleMove(e.clientY);
-    const onTouchMove = (e: TouchEvent) => { if (dragActiveKeyRef.current) { handleMove(e.touches[0].clientY); e.preventDefault(); } };
-
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('touchmove', onTouchMove, { passive: false });
-
-    return () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('touchmove', onTouchMove);
-    };
-  }, []);
-
   return (
     <PageContainer title="Comande" description="Lista comande attive">
-      <Grid size={12} sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-        <FormControl sx={{ minWidth: 180 }}>
-          <InputLabel id="view-select-label">Visualizzazione</InputLabel>
-          <Select labelId="view-select-label" value={viewMode} onChange={e => setViewMode(e.target.value as 'prodotto' | 'tavolo')}>
-            <MenuItem value="prodotto">Per prodotto</MenuItem>
-            <MenuItem value="tavolo">Per tavolo</MenuItem>
-          </Select>
-        </FormControl>
-        <Box sx={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-          {[{ label: 'Mostra tutti i prodotti', checked: mostraTuttiProdottiRef.current, onChange: () => { mostraTuttiProdottiRef.current = !mostraTuttiProdottiRef.current; refresh(); } }, { label: 'Nascondi consegnati', checked: nascondiConsegnatiRef.current, onChange: () => { nascondiConsegnatiRef.current = !nascondiConsegnatiRef.current; refresh(); } }, { label: 'Suono', checked: audioEnabled, onChange: () => setAudioEnabled(p => !p) }].map(({ label, checked, onChange }) => (
-            <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Typography>{label}</Typography>
-              <Switch checked={checked} onChange={onChange} />
-            </Box>
-          ))}
-          {viewMode === 'prodotto' && (
-            <Button variant="outlined" onClick={resetToArrivalOrder}>
-              Riordina (ordine di arrivo)
-            </Button>
-          )}
-        </Box>
-      </Grid>
+      <Box sx={{ width: '100%', overflowX: 'hidden' }}>
+        {/* Header bottoni + select */}
+        <Grid size={12} sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, flexWrap: 'wrap' }}>
+          <FormControl sx={{ minWidth: 180 }}>
+            <InputLabel id="view-select-label">Visualizzazione</InputLabel>
+            <Select
+              labelId="view-select-label"
+              value={viewMode}
+              onChange={(e) => setViewMode(e.target.value as 'prodotto' | 'tavolo')}
+            >
+              <MenuItem value="prodotto">Per prodotto</MenuItem>
+              <MenuItem value="tavolo">Per tavolo</MenuItem>
+            </Select>
+          </FormControl>
 
-      <Grid size={12}>
-        {loading ? <CircularProgress sx={{ m: 4 }} /> : errore ? <Alert severity="error" sx={{ m: 4 }}>{errore}</Alert> : ordini.length === 0 ? <Alert severity="info" sx={{ m: 4 }}>Nessuna comanda attiva</Alert> : (
-          <Box
-            ref={containerRef}
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
-              gap: 2,
-              overflowY: 'auto',
-              maxHeight: '80vh',
-              pb: 2,
-              WebkitOverflowScrolling: 'touch'
-            }}
-          >
-            {orderedGruppe.map(gruppo => (
-              <Card
-                key={gruppo.titolo}
-                draggable={true}
-                onDragStart={onCardDragStart(gruppo.titolo)}
-                onDragOver={onCardDragOver(gruppo.titolo)}
-                onDrop={onCardDrop(gruppo.titolo)}
-                onDragEnd={onCardDragEnd}
-                sx={{ position: 'relative', touchAction: 'pan-y' }}
-              >
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                    <Box
-                      onMouseDown={onHandleMouseDown(gruppo.titolo)}
-                      onTouchStart={(e) => { e.preventDefault(); draggingKeyRef.current = gruppo.titolo; }}
-                      sx={{ width: 28, height: 28, mr: 1, borderRadius: 1, border: '1px dashed', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'grab' }}
-                      title="Tieni premuto e trascina per spostare"
-                    >
-                      <Box sx={{ width: 10, height: 2, bgcolor: 'text.primary' }} />
-                    </Box>
-                    <Typography variant="h6">{gruppo.titolo}</Typography>
-                  </Box>
-                  <Divider />
-                  <HeaderRighe mode={viewMode} />
-                  <Divider sx={{ mb: 1 }} />
-                  <Box>
-                    {gruppo.ordini.map(o => (
-                      <OrdineCard key={o.id} ordine={o} mode={viewMode} onToggle={checked => handleToggleConsegnato(o, checked)} isNew={!prevOrdiniRef.current.includes(o.id)} />
-                    ))}
-                  </Box>
-                </CardContent>
-              </Card>
+          <Box sx={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+            {[
+              {
+                label: 'Mostra tutti i prodotti',
+                checked: mostraTuttiProdottiRef.current,
+                onChange: () => { mostraTuttiProdottiRef.current = !mostraTuttiProdottiRef.current; refresh(); },
+              },
+              {
+                label: 'Nascondi consegnati',
+                checked: nascondiConsegnatiRef.current,
+                onChange: () => { nascondiConsegnatiRef.current = !nascondiConsegnatiRef.current; refresh(); },
+              },
+              {
+                label: 'Suono',
+                checked: audioEnabled,
+                onChange: () => setAudioEnabled((p) => !p),
+              },
+            ].map(({ label, checked, onChange }) => (
+              <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 180 }}>
+                <Typography sx={{ whiteSpace: 'nowrap' }}>{label}</Typography>
+                <Switch checked={checked} onChange={onChange} />
+              </Box>
             ))}
+
+            {viewMode === 'prodotto' && (
+              <Button variant="outlined" onClick={resetToArrivalOrder}>Riordina (ordine più vecchio)</Button>
+            )}
           </Box>
-        )}
-      </Grid>
+        </Grid>
+
+        {/* Contenitore card */}
+        <Grid size={12}>
+          {loading ? (
+            <CircularProgress sx={{ m: 4 }} />
+          ) : errore ? (
+            <Alert severity="error" sx={{ m: 4 }}>{errore}</Alert>
+          ) : ordini.length === 0 ? (
+            <Alert severity="info" sx={{ m: 4 }}>Nessuna comanda attiva</Alert>
+          ) : (
+<Box
+  sx={{
+    display: 'flex',
+    flexDirection: 'row',
+    gap: 2,
+    overflowX: 'auto',
+    overflowY: 'hidden',
+    pb: 2,
+    px: 1,
+    WebkitOverflowScrolling: 'touch',
+    width: '100%',
+    maxWidth: '100vw',
+    boxSizing: 'border-box',
+  }}
+>
+
+              {orderedGruppe.map((gruppo) => {
+                const key = gruppo.titolo;
+                const isHighlighted = highlightedCards[key] ?? false;
+
+                return (
+                  <Card
+  key={gruppo.titolo}
+  sx={{
+    flex: '0 0 auto',
+    width: {
+      xs: viewMode === 'prodotto' ? 280 : 350,  // larghezza fissa su mobile
+      sm: viewMode === 'prodotto' ? 320 : 400,
+      md: viewMode === 'prodotto' ? 380 : 500,
+      lg: viewMode === 'prodotto' ? 480 : 600,
+    },
+    maxWidth: '100%', // evita overflow
+    height: cardHeight,
+    display: 'flex',
+    flexDirection: 'column',
+    border: isHighlighted ? '2px solid #fbc02d' : '1px solid rgba(0,0,0,0.12)',
+    transition: 'border 0.3s',
+  }}
+  draggable
+  onDragStart={onCardDragStart(key)}
+  onDragOver={onCardDragOver(key)}
+  onDrop={onCardDrop(key)}
+  onDragEnd={onCardDragEnd}
+>
+
+
+                    <CardContent sx={{ display: 'flex', flexDirection: 'column', height: '100%', boxSizing: 'border-box' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, minHeight: 44 }}>
+                        <Box
+                          onMouseDown={onHandleMouseDown(key)}
+                          onTouchStart={(e) => { e.preventDefault(); draggingKeyRef.current = key; setHighlightedCards((prev) => ({ ...prev, [key]: false })); }}
+                          sx={{
+                            width: 28,
+                            height: 28,
+                            mr: 1,
+                            borderRadius: 1,
+                            border: '1px dashed',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            cursor: 'grab',
+                          }}
+                          title="Tieni premuto e trascina per spostare"
+                        >
+                          <Box sx={{ width: 10, height: 2, bgcolor: 'text.primary' }} />
+                        </Box>
+
+                        <Typography
+                          variant="h6"
+                          sx={{
+                            wordBreak: 'break-word',
+                            lineHeight: 1.1,
+                            fontSize: 'clamp(0.9rem, 2.4vw, 1.05rem)',
+                            maxHeight: 'calc(1.1rem * 2.4)',
+                            overflow: 'hidden',
+                            display: '-webkit-box',
+                            WebkitBoxOrient: 'vertical',
+                            WebkitLineClamp: 2,
+                          }}
+                        >
+                          {gruppo.titolo}
+                        </Typography>
+                      </Box>
+
+                      <Divider />
+                      <HeaderRighe mode={viewMode} />
+                      <Divider sx={{ mb: 1 }} />
+                      <Box sx={{ flex: 1, overflowY: 'auto' }}>
+                        {gruppo.ordini.map((o) => (
+                          <OrdineCard key={o.id} ordine={o} mode={viewMode} onToggle={(checked) => handleToggleConsegnato(o, checked)} />
+                        ))}
+                      </Box>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </Box>
+          )}
+        </Grid>
+      </Box>
     </PageContainer>
   );
 };

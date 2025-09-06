@@ -19,7 +19,7 @@ import {
 } from '@mui/material';
 import { useEffect, useState } from 'react';
 
-type Tavolo = { id: number; numero: number };
+type Tavolo = { id: number; numero: number; attivo: boolean };
 type Sessione = {
   id: number | null;
   tavolo: Tavolo | null;
@@ -35,7 +35,7 @@ const TavoloManagementForm = () => {
   const [numero, setNumero] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [errore, setErrore] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<null | number>(null);
+  const [confirmDelete, setConfirmDelete] = useState<null | Tavolo>(null);
   const [openSessioneModal, setOpenSessioneModal] = useState<null | Tavolo>(null);
   const [numeroPartecipanti, setNumeroPartecipanti] = useState<number>(1);
   const [isAyce, setIsAyce] = useState(true);
@@ -45,16 +45,22 @@ const TavoloManagementForm = () => {
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
 
   const fetchTavoli = async () => {
-    try {
-      const res = await fetch(`${backendUrl}/api/tavoli`, { credentials: 'include' });
-      if (res.ok) {
-        const dati = await res.json();
-        setTavoli(dati.sort((a: Tavolo, b: Tavolo) => a.numero - b.numero));
-      }
-    } catch (err) {
-      console.error('Errore recupero tavoli', err);
+  try {
+    const res = await fetch(`${backendUrl}/api/tavoli`, { credentials: 'include' });
+    if (res.ok) {
+      const dati = await res.json();
+      // Mostra solo tavoli attivi e ordina per numero tavolo
+      setTavoli(
+        dati
+          .filter((t: Tavolo) => t.attivo)
+          .sort((a: Tavolo, b: Tavolo) => a.numero - b.numero)
+      );
     }
-  };
+  } catch (err) {
+    console.error('Errore recupero tavoli', err);
+  }
+};
+
 
   const fetchSessioni = async () => {
     try {
@@ -87,7 +93,7 @@ const TavoloManagementForm = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ numero }),
+        body: JSON.stringify({ numero, attivo: true }), // tavolo attivo di default
       });
       if (res.ok) {
         setNumero(0);
@@ -102,37 +108,64 @@ const TavoloManagementForm = () => {
     }
   };
 
-  const deleteTavolo = async (id: number) => {
+  const deleteTavolo = async (tavolo: Tavolo) => {
     try {
-      await fetch(`${backendUrl}/api/tavoli/${id}`, {
-        method: 'DELETE',
+      const res = await fetch(`${backendUrl}/api/tavoli/${tavolo.id}`, {
+        method: 'DELETE', // backend deve gestire cascade
         credentials: 'include',
       });
-      fetchTavoli();
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const disattivaSessione = async (sessione: Sessione) => {
-    try {
-      const res = await fetch(`${backendUrl}/api/sessioni/${sessione.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ ...sessione, stato: 'CHIUSA' }),
-      });
-      if (res.ok) {
-        fetchSessioni();
-        fetchTavoli();
-        window.open(`${backendUrl}/api/sessioni/${sessione.id}/pdf`, '_blank');
-      }
+      if (res.ok) fetchTavoli();
     } catch (err) {
       console.error(err);
     } finally {
-      setConfirmDisattiva(null);
+      setConfirmDelete(null);
     }
   };
+
+const disattivaSessione = async (sessione: Sessione) => {
+  // apro subito la finestra vuota
+  const win = window.open('', '_blank');
+
+  try {
+    // chiudo la sessione
+    const res = await fetch(`${backendUrl}/api/sessioni/${sessione.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ ...sessione, stato: 'CHIUSA' }),
+    });
+
+    if (!res.ok) {
+      console.error('Errore chiusura sessione');
+      win?.close();
+      return;
+    }
+
+    fetchSessioni();
+    fetchTavoli();
+
+    // scarico il PDF
+    const pdfRes = await fetch(`${backendUrl}/api/sessioni/${sessione.id}/pdf`, { credentials: 'include' });
+    if (!pdfRes.ok) {
+      console.error('Errore download PDF');
+      win?.close();
+      return;
+    }
+
+    const blob = await pdfRes.blob();
+    const url = URL.createObjectURL(blob);
+
+    // assegno l'URL alla finestra già aperta
+    win!.location.href = url;
+  } catch (err) {
+    console.error(err);
+    win?.close();
+  } finally {
+    setConfirmDisattiva(null);
+  }
+};
+
+
 
   const apriSessione = async (tavolo: Tavolo) => {
     if (!numeroPartecipanti || numeroPartecipanti < 1) {
@@ -178,11 +211,8 @@ const TavoloManagementForm = () => {
 
         {errore && <Alert severity="error" sx={{ mb: 2 }}>{errore}</Alert>}
 
-        {/* Bottone per aprire la modale di aggiunta tavolo */}
         <Box mb={2}>
-          <Button variant="contained" onClick={() => setOpenAddModal(true)}>
-            Aggiungi Tavolo
-          </Button>
+          <Button variant="contained" onClick={() => setOpenAddModal(true)}>Aggiungi Tavolo</Button>
         </Box>
 
         <Grid container spacing={2}>
@@ -229,7 +259,7 @@ const TavoloManagementForm = () => {
                       </Button>
                     )}
                     <Button variant="outlined" color="primary" onClick={() => window.open(`${backendUrl}/api/qr/${t.numero}`, '_blank')}>QR</Button>
-                    <Button variant="outlined" color="error" onClick={() => setConfirmDelete(t.id)}>Elimina</Button>
+                    <Button variant="outlined" color="error" onClick={() => setConfirmDelete(t)}>Elimina</Button>
                   </Box>
                 </Box>
               </Grid>
@@ -261,10 +291,13 @@ const TavoloManagementForm = () => {
         {/* Modale conferma eliminazione */}
         <Dialog open={!!confirmDelete} onClose={() => setConfirmDelete(null)}>
           <DialogTitle>Conferma eliminazione</DialogTitle>
-          <DialogContent>Sei sicuro di voler eliminare questo tavolo?</DialogContent>
+          <DialogContent>
+            Sei sicuro di voler eliminare il Tavolo #{confirmDelete?.numero}?
+            Questa operazione eliminerà <b>tutte le sessioni e gli ordini ad esso associati</b>.
+          </DialogContent>
           <DialogActions>
             <Button onClick={() => setConfirmDelete(null)}>Annulla</Button>
-            <Button color="error" onClick={() => { if (confirmDelete) deleteTavolo(confirmDelete); setConfirmDelete(null); }}>
+            <Button color="error" onClick={() => confirmDelete && deleteTavolo(confirmDelete)}>
               Elimina
             </Button>
           </DialogActions>
