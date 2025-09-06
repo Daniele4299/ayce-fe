@@ -17,6 +17,7 @@ interface ProductCardProps {
   quantita: number;
   onIncrement: () => void;
   onDecrement: () => void;
+  sessionIsAyce: boolean;
 }
 
 const ProductCard: React.FC<ProductCardProps> = ({
@@ -24,6 +25,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
   quantita,
   onIncrement,
   onDecrement,
+  sessionIsAyce,
 }) => {
   const getProductImage = useCallback((fileName: string | undefined) => {
     if (!fileName) return '/images/products/placeholder.png';
@@ -49,7 +51,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
 >
   {/* Box immagine con altezza fissa */}
   <Box sx={{ position: 'relative', width: '100%', height: 180, overflow: 'hidden' }}>
-    {prodotto.isLimitedPartecipanti && (
+    {sessionIsAyce && prodotto.isLimitedPartecipanti && (
       <Box
         sx={{
           position: 'absolute',

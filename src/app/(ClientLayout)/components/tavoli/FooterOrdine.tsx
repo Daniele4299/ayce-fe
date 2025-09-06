@@ -8,9 +8,10 @@ interface Props {
   cooldown: number | null;
   inviaOrdine: () => void;
   fetchStorico: () => void;
-  totalPortate: number;
-  maxPortate: number;
+  totalPortate: number | undefined;
+  maxPortate: number | undefined;
 }
+
 
 
 const FooterOrdine: React.FC<Props> = ({ disableInvio, cooldown, inviaOrdine, fetchStorico, totalPortate, maxPortate }) => {

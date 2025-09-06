@@ -147,6 +147,7 @@ const flatItems = useMemo(() => {
     quantita={ordine[prodotto.id] || 0}
     onIncrement={h?.inc}
     onDecrement={h?.dec}
+    sessionIsAyce={sessionIsAyce} 
   />
 </Box>
 

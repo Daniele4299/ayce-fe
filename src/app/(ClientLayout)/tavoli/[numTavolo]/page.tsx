@@ -9,6 +9,10 @@ import FooterOrdine from '@/app/(ClientLayout)/components/tavoli/FooterOrdine';
 import dynamic from 'next/dynamic';
 import { Client, IMessage } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
+import { Snackbar, IconButton } from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
+
+
 
 const StoricoDialog = dynamic(() => import('../../components/tavoli/StoricoTavolo'), { ssr: false });
 
@@ -34,6 +38,8 @@ const CustomerTablePage = () => {
   const [storicoOpen, setStoricoOpen] = useState(false);
   const [storico, setStorico] = useState<any[]>([]);
   const [categoriaSelezionata, setCategoriaSelezionata] = useState<number | 'all'>('all');
+  const [toastError, setToastError] = useState<{ text: string; key: number } | null>(null);
+
 
   const stompClientRef = useRef<Client | null>(null);
   const checkDone = useRef(false);
@@ -49,6 +55,14 @@ const CustomerTablePage = () => {
   useEffect(() => { ordineRef.current = ordine; }, [ordine]);
   useEffect(() => { prodottiRef.current = prodotti; }, [prodotti]);
   useEffect(() => { sessioneRef.current = sessione; }, [sessione]);
+
+  const calcolaCooldownDaSessione = (ultimoOrdine?: string) => {
+  if (!ultimoOrdine) return null;
+  const diffSec = Math.floor((Date.now() - Date.parse(ultimoOrdine)) / 1000);
+  const remaining = COOLDOWN_MINUTI * 60 - diffSec;
+  return remaining > 0 ? remaining : null;
+};
+
 
   // ---------- Recupero sessione
   useEffect(() => {
@@ -72,25 +86,36 @@ const CustomerTablePage = () => {
   }, [numTavolo, backendUrl, router]);
 
   // ----------- Recupero sessione completa
-  useEffect(() => {
-  const fetchSessioneCompleta = async () => {
-    if (!sessioneRef.current?.sessioneId) return;
+// ----------- Recupero sessione completa
+const fetchSessioneCompleta = useCallback(async () => {
+  if (!sessioneRef.current?.sessioneId) return;
+  try {
+    const res = await fetch(`${backendUrl}/api/sessioni/${sessioneRef.current.sessioneId}`, {
+      credentials: 'include'
+    });
+    if (!res.ok) throw new Error('Errore fetch sessione completa');
+    const data = await res.json();
+    setSessioneCompleta(data);
 
-    try {
-      const res = await fetch(`${backendUrl}/api/sessioni/${sessioneRef.current.sessioneId}`, {
-        credentials: 'include'
-      });
-      if (!res.ok) throw new Error('Errore fetch sessione completa');
-      const data = await res.json();
-      setSessioneCompleta(data);
-      console.log('sessioneCompleta:', data);
-    } catch (err) {
-      console.error(err);
+    // calcolo cooldown da ultimoOrdineInviato
+    const remaining = calcolaCooldownDaSessione(data.ultimoOrdineInviato);
+    if (remaining) {
+      setCooldown(remaining);
+      setOrdineBloccato(true);
+    } else {
+      setCooldown(null);
+      setOrdineBloccato(false);
     }
-  };
+  } catch (err) {
+    console.error(err);
+  }
+}, [backendUrl]);
 
+useEffect(() => {
   fetchSessioneCompleta();
-}, [sessione]); // esegue dopo che lo stato sessione cambia
+}, [sessione, fetchSessioneCompleta]);
+
+
 
 
   // ---------- Recupero prodotti
@@ -133,8 +158,15 @@ const CustomerTablePage = () => {
                 }
               }
             }
-          } else if (data.tipoEvento === 'ORDER_SENT') { setOrdine({}); setOrdineBloccato(true); setCooldown(COOLDOWN_MINUTI * 60); }
-          else if (data.tipoEvento === 'ERROR') alert(data.payload);
+} else if (data.tipoEvento === 'ORDER_SENT') {
+  setOrdine({});
+  fetchSessioneCompleta();
+} else if (data.tipoEvento === 'ERROR') {
+  setToastError({ text: data.payload || 'Errore sconosciuto', key: Date.now() });
+}
+
+
+
         } catch (err) { console.error('WS message handling error', err); }
       });
       client.publish({ destination: '/app/tavolo', body: JSON.stringify({ tipoEvento: 'GET_STATUS', payload: '' }) });
@@ -294,18 +326,22 @@ const CustomerTablePage = () => {
 
   const capitalize = useCallback((s?: string) => s ? s.charAt(0).toUpperCase() + s.toLowerCase().slice(1) : '', []);
 
-  const numPortateSelezionate = Object.entries(ordine)
-  .filter(([id, q]) => {
-    const prod = prodotti.find(p => p.id === Number(id));
-    return !!prod && ((prod.categoria?.id ?? 0) < 100) && Number(q) > 0;
-  })
-  .reduce((sum, [, q]) => sum + Number(q), 0);
+const numPortateSelezionate = sessioneCompleta?.isAyce === false
+  ? undefined
+  : Object.entries(ordine)
+      .filter(([id, q]) => {
+        const prod = prodotti.find(p => p.id === Number(id));
+        return !!prod && ((prod.categoria?.id ?? 0) < 100) && Number(q) > 0;
+      })
+      .reduce((sum, [, q]) => sum + Number(q), 0);
 
-const numPortateMax = sessioneCompleta?.numeroPartecipanti
-  ? sessioneCompleta.numeroPartecipanti * 5
-  : 0;
+const numPortateMax = sessioneCompleta?.isAyce === false
+  ? undefined
+  : sessioneCompleta?.numeroPartecipanti
+    ? sessioneCompleta.numeroPartecipanti * 5
+    : 0;
 
-  
+
   // ---------- Early guards
   if (loading) return <CircularProgress sx={{ m: 4 }} />;
   if (errore) return <Alert severity="error" sx={{ m: 4 }}>{errore}</Alert>;
@@ -332,6 +368,29 @@ const numPortateMax = sessioneCompleta?.numeroPartecipanti
         sessione={sessione}
         isPranzoNow={isPranzoNow}
       />
+
+<Snackbar
+  open={!!toastError}
+  autoHideDuration={5000}
+  onClose={() => setToastError(null)}
+  anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+  key={toastError?.key}
+>
+  <Alert
+    severity="error"
+    variant="filled"
+    onClose={() => setToastError(null)}
+    action={
+      <IconButton size="small" color="inherit" onClick={() => setToastError(null)}>
+        <CloseIcon fontSize="small" />
+      </IconButton>
+    }
+    sx={{ alignItems: 'center' }}
+  >
+    {toastError?.text}
+  </Alert>
+</Snackbar>
+
 
       <FooterOrdine
         disableInvio={Object.values(ordine).every(q => q === 0) || (ordineBloccato && Object.keys(ordine).some(id => {
