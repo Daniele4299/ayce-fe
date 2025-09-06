@@ -1,36 +1,47 @@
 'use client';
 
-import { ThemeProvider, CssBaseline, Box } from "@mui/material"; // o baselightTheme
+import { ThemeProvider, CssBaseline, Box } from "@mui/material";
 import clientTheme from "@/utils/theme/ClientTheme"; // o baselightTheme
-import { ReactNode, useEffect } from "react";
+import { ReactNode } from "react";
 import Head from "next/head";
 
 export default function ClientLayout({ children }: { children: ReactNode }) {
-  // Blocca pinch zoom su iOS/Android con touchmove
-  useEffect(() => {
-    const preventPinch = (e: TouchEvent) => {
-      if (e.touches.length > 1) e.preventDefault();
-    };
-    document.addEventListener('touchmove', preventPinch, { passive: false });
-    return () => document.removeEventListener('touchmove', preventPinch);
-  }, []);
-
   return (
     <html lang="en">
-      <body>
-        <Head>
-          <meta
-            name="viewport"
-            content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
-          />
-        </Head>
+      <Head>
+        {/* Disabilita lo zoom su mobile */}
+        <meta
+          name="viewport"
+          content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+        />
+      </Head>
 
+      <body>
         <style jsx global>{`
           html, body {
             touch-action: pan-x pan-y;
             -ms-touch-action: pan-x pan-y;
             -webkit-user-select: none;
             user-select: none;
+            margin: 0;
+            padding: 0;
+            font-size: 16px;
+          }
+
+          body, #__next {
+            width: 100%;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+          }
+
+          img, video, canvas {
+            max-width: 100%;
+            height: auto;
+          }
+
+          * {
+            box-sizing: border-box;
           }
         `}</style>
 

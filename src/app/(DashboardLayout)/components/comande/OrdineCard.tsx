@@ -1,5 +1,6 @@
 'use client';
 import { Box, Checkbox, FormControlLabel, Typography } from '@mui/material';
+import { useState, useEffect } from 'react';
 
 interface Ordine {
   id: number;
@@ -15,18 +16,34 @@ interface OrdineCardProps {
   ordine: Ordine;
   mode: 'prodotto' | 'tavolo';
   onToggle: (checked: boolean) => void;
+  onRemove?: () => void; // callback per rimuovere dopo animazione
 }
 
-const OrdineCard: React.FC<OrdineCardProps> = ({ ordine, mode, onToggle }) => {
+const OrdineCard: React.FC<OrdineCardProps> = ({ ordine, mode, onToggle, onRemove }) => {
+  const [checked, setChecked] = useState(ordine.flagConsegnato);
+  const [pendingRemoval, setPendingRemoval] = useState(false);
+
   const orario = new Date(ordine.orario).toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
   });
 
+  const handleChange = (val: boolean) => {
+    setChecked(val);
+    if (val && onRemove) {
+      // Mostra il check per 1 secondo prima di rimuovere
+      setPendingRemoval(true);
+      setTimeout(() => {
+        onRemove();
+      }, 1000);
+    }
+    onToggle(val);
+  };
+
   return (
     <Box
       sx={{
-        display: 'grid',
+        display: pendingRemoval ? 'grid' : 'grid',
         gridTemplateColumns:
           mode === 'prodotto'
             ? '60px 60px 60px 1fr 60px'
@@ -36,6 +53,8 @@ const OrdineCard: React.FC<OrdineCardProps> = ({ ordine, mode, onToggle }) => {
         px: 1,
         borderBottom: '1px solid',
         borderColor: 'divider',
+        opacity: pendingRemoval ? 0.6 : 1, // leggero fade out visivo
+        transition: 'opacity 0.3s',
       }}
     >
       {mode === 'prodotto' ? (
@@ -56,8 +75,8 @@ const OrdineCard: React.FC<OrdineCardProps> = ({ ordine, mode, onToggle }) => {
       <FormControlLabel
         control={
           <Checkbox
-            checked={ordine.flagConsegnato}
-            onChange={(e) => onToggle(e.target.checked)}
+            checked={checked}
+            onChange={(e) => handleChange(e.target.checked)}
           />
         }
         label=""
