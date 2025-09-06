@@ -208,7 +208,7 @@ const UserManagement = ({ readOnly = false }: { readOnly?: boolean }) => {
         <DialogTitle>Conferma Eliminazione</DialogTitle>
         <DialogContent>
           <Typography>
-            Sei sicuro di voler eliminare l'utente{' '}
+            Sei sicuro di voler eliminare {' '}
             <strong>{userToDelete?.username}</strong>?
           </Typography>
         </DialogContent>
