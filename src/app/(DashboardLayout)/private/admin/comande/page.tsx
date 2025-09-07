@@ -379,7 +379,18 @@ useEffect(() => {
   />
 )}
 
-     <Box sx={{ width: '95vw', overflowX: 'hidden' }}>
+     <Box
+  sx={{
+    width: {
+      xs: '100%',   // mobile
+      sm: '95vw',   // tablet
+      lg: '100%',   // desktop grande
+    },
+    maxWidth: '1600px',
+    mx: 'auto',
+    overflowX: 'hidden',
+  }}
+>
         {/* Header bottoni + select */}
         <Grid size={12} sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, flexWrap: 'wrap' }}>
           <FormControl sx={{ minWidth: 180 }}>
