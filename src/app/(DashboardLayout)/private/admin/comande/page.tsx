@@ -16,6 +16,7 @@ import {
   Typography,
   Divider,
   Button,
+  Snackbar,
 } from '@mui/material';
 import PageContainer from '@/app/(DashboardLayout)/components/container/PageContainer';
 import OrdineCard from '@/app/(DashboardLayout)/components/comande/OrdineCard';
@@ -38,6 +39,7 @@ const Comande = () => {
   const [errore, setErrore] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'prodotto' | 'tavolo'>('prodotto');
   const [audioEnabled, setAudioEnabled] = useState(true);
+  const [wsConnesso, setWsConnesso] = useState(true);
   const [cardHeight, setCardHeight] = useState(500);
 
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
@@ -54,9 +56,62 @@ const Comande = () => {
   const draggingKeyRef = useRef<string | null>(null);
   const dragActiveKeyRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    audio.current = new Audio('/notification.mp3');
-  }, []);
+  
+
+  const toggleAudio = useCallback(() => {
+  setAudioEnabled((prev) => {
+    const next = !prev;
+    if (!next && audio.current) {
+      // se sto disabilitando, stoppa subito l'audio corrente
+      try { audio.current.pause(); } catch (e) {}
+      try { audio.current.currentTime = 0; } catch (e) {}
+    }
+    return next;
+  });
+}, []);
+
+// Inizializza l'Audio object (una sola volta)
+useEffect(() => {
+  audio.current = new Audio('/notification.mp3');
+  audio.current.preload = 'auto';
+  // audio.current.volume = 0.9; // opzionale
+  audio.current.loop = false;
+  // assicurati che sia "pulito"
+  audio.current.pause();
+  try { audio.current.currentTime = 0; } catch (e) {}
+}, []);
+
+// Sblocca il contesto audio al primo touch / click dell'utente (necessario su iOS Safari)
+const [showAudioHint, setShowAudioHint] = useState(true);
+
+// nella useEffect già presente per unlockAudio:
+useEffect(() => {
+  const unlockAudio = () => {
+    if (!audio.current) return;
+
+    audio.current.play()
+      .then(() => {
+        audio.current?.pause();
+        try { audio.current!.currentTime = 0; } catch (e) {}
+      })
+      .catch(() => {});
+
+    // nascondi la snackbar
+    setShowAudioHint(false);
+  };
+
+  window.addEventListener('touchstart', unlockAudio, { once: true });
+  window.addEventListener('click', unlockAudio, { once: true });
+
+  return () => {
+    window.removeEventListener('touchstart', unlockAudio);
+    window.removeEventListener('click', unlockAudio);
+  };
+}, []);
+
+
+
+
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -91,9 +146,25 @@ const Comande = () => {
         const data = await fetchOrdini();
         const newOrders = data.filter((o) => !prevOrdiniRef.current.includes(o.id));
 
-        if (playAudio && newOrders.length > 0 && audioEnabled) {
-          audio.current?.play().catch(() => {});
-        }
+       if (playAudio && newOrders.length > 0) {
+  // sempre reset/fermo per evitare conflitti di istanze già in play
+  if (audio.current) {
+    // se l'audio è abilitato: pausa/reset e poi play
+    if (audioEnabled) {
+      try { audio.current.pause(); } catch (e) {}
+      try { audio.current.currentTime = 0; } catch (e) {}
+      audio.current.play().catch(() => {});
+    } else {
+      // se disabilitato: assicurati che non ci siano suoni in corso
+      try { audio.current.pause(); } catch (e) {}
+      try { audio.current.currentTime = 0; } catch (e) {}
+    }
+  }
+}
+
+
+
+
 
         if (isWebsocketUpdate) {
           const newHighlighted: Record<string, boolean> = {};
@@ -119,25 +190,59 @@ const Comande = () => {
     refresh().finally(() => setLoading(false));
   }, [refresh]);
 
-  useEffect(() => {
-    const setupWebSocket = async () => {
-      const client = new Client({
-        brokerURL: undefined,
-        connectHeaders: {},
-        debug: console.log,
-        reconnectDelay: 5000,
-        webSocketFactory: () => new SockJS(`${backendUrl}/ws`),
-      });
-      client.onConnect = () => {
-        client.subscribe('/topic/cucina', (msg: IMessage) => {
+// Mantieni una singola istanza del client e puliscila sul cleanup
+const wsClientRef = useRef<Client | null>(null);
+
+useEffect(() => {
+  let mounted = true;
+
+  const setupWebSocket = async () => {
+    // Se esiste già un client, disattivalo prima di crearne uno nuovo
+    if (wsClientRef.current) {
+      try { wsClientRef.current.deactivate(); } catch (e) {}
+      wsClientRef.current = null;
+    }
+
+    const client = new Client({
+      brokerURL: undefined,
+      connectHeaders: {},
+      debug: () => {}, // evita spam in console in produzione; o lascia console.log se preferisci
+      reconnectDelay: 5000,
+      webSocketFactory: () => new SockJS(`${backendUrl}/ws`),
+    });
+
+    client.onConnect = () => {
+      setWsConnesso(true);
+      // sottoscrivi -> quando ricevo eventi chiamo refresh
+      client.subscribe('/topic/cucina', (msg: IMessage) => {
+        if (!mounted) return;
+        try {
           const data = JSON.parse(msg.body);
-          if (['ORDER_SENT', 'CONSEGNA_CHANGED'].includes(data.tipoEvento)) refresh(true, true);
-        });
-      };
-      client.activate();
+          if (['ORDER_SENT', 'CONSEGNA_CHANGED'].includes(data.tipoEvento)) {
+            // chiamata non bloccante
+            refresh(true, true);
+          }
+        } catch (e) { console.error('WS message parse error', e); }
+      });
     };
-    setupWebSocket();
-  }, [backendUrl, refresh]);
+
+    client.onStompError = () => setWsConnesso(false);
+    client.onWebSocketClose = () => setWsConnesso(false);
+    client.activate();
+    wsClientRef.current = client;
+  };
+
+  setupWebSocket();
+
+  return () => {
+    mounted = false;
+    if (wsClientRef.current) {
+      try { wsClientRef.current.deactivate(); } catch (e) {}
+      wsClientRef.current = null;
+    }
+  };
+}, [backendUrl, refresh]);
+
 
   const handleToggleConsegnato = async (ordine: Ordine, checked: boolean) => {
     try {
@@ -260,9 +365,21 @@ const Comande = () => {
     </Box>
   );
 
+  
+
   return (
     <PageContainer title="Comande" description="Lista comande attive">
-      <Box sx={{ width: '100%', overflowX: 'hidden' }}>
+{showAudioHint && (
+  <Snackbar
+    open={showAudioHint}
+    // rimuovi autoHideDuration per non chiudere automaticamente
+    onClose={() => setShowAudioHint(false)}
+    message="Clicca o tocca lo schermo per abilitare il suono"
+    anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+  />
+)}
+
+     <Box sx={{ width: '95vw', overflowX: 'hidden' }}>
         {/* Header bottoni + select */}
         <Grid size={12} sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, flexWrap: 'wrap' }}>
           <FormControl sx={{ minWidth: 180 }}>
@@ -289,11 +406,6 @@ const Comande = () => {
                 checked: nascondiConsegnatiRef.current,
                 onChange: () => { nascondiConsegnatiRef.current = !nascondiConsegnatiRef.current; refresh(); },
               },
-              {
-                label: 'Suono',
-                checked: audioEnabled,
-                onChange: () => setAudioEnabled((p) => !p),
-              },
             ].map(({ label, checked, onChange }) => (
               <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 180 }}>
                 <Typography sx={{ whiteSpace: 'nowrap' }}>{label}</Typography>
@@ -305,6 +417,21 @@ const Comande = () => {
               <Button variant="outlined" onClick={resetToArrivalOrder}>Riordina (ordine più vecchio)</Button>
             )}
           </Box>
+          <Box
+  sx={{
+    px: 2,
+    py: 0.5,
+    borderRadius: 1,
+    bgcolor: wsConnesso ? 'success.main' : 'error.main',
+    color: 'common.white',
+    fontWeight: 'bold',
+    fontSize: '0.875rem',
+    whiteSpace: 'nowrap',
+  }}
+>
+  {wsConnesso ? 'Connesso' : 'Riconnessione'}
+</Box>
+
         </Grid>
 
         {/* Contenitore card */}
