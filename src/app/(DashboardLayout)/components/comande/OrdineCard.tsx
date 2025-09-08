@@ -40,6 +40,11 @@ const OrdineCard: React.FC<OrdineCardProps> = ({ ordine, mode, onToggle, onRemov
     onToggle(val);
   };
 
+  useEffect(() => {
+  setChecked(ordine.flagConsegnato);
+}, [ordine.flagConsegnato]);
+
+
   return (
     <Box
       sx={{

@@ -107,10 +107,21 @@ const ProductManagementForm: React.FC = () => {
 
         {/* Mostra bottone solo se ADMIN */}
         {role === 'ADMIN' && (
-          <Button variant="contained" color="primary" onClick={handleAddProduct} sx={{ mb: 2 }}>
-            Aggiungi prodotto
-          </Button>
-        )}
+  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+    <Button variant="contained" color="primary" onClick={handleAddProduct}>
+      Aggiungi prodotto
+    </Button>
+
+    <Button
+      variant="contained"
+      color="secondary"
+      onClick={() => window.open(`${backendUrl}/api/prodotti/utilizzati/pdf`, '_blank')}
+    >
+      Scarica PDF Prodotti Usati
+    </Button>
+  </Box>
+)}
+
 
         <Dialog open={modalOpen} onClose={() => setModalOpen(false)} maxWidth="md" fullWidth>
           <DialogTitle>{productToEdit ? 'Modifica Prodotto' : 'Aggiungi Prodotto'}</DialogTitle>

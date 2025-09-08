@@ -253,6 +253,13 @@ useEffect(() => {
         body: JSON.stringify({ id: ordine.id, flagConsegnato: checked }),
       });
 
+    // --- NUOVO: rimuove il bordo dorato della card del gruppo ---
+    const key = viewMode === 'prodotto'
+      ? ordine.prodotto?.nome ?? 'Sconosciuto'
+      : String(ordine.tavolo?.numero ?? '-');
+    setHighlightedCards((prev) => ({ ...prev, [key]: false }));
+    // ------------------------------------------------------------
+
       if (viewMode === 'prodotto' && checked && nascondiConsegnatiRef.current) {
         setOrdini((prev) => prev.filter((o) => o.id !== ordine.id));
       } else refresh();

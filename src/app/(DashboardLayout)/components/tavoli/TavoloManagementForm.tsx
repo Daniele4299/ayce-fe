@@ -287,9 +287,10 @@ const TavoloManagementForm = () => {
                         <Typography variant="body2" color="textSecondary">
                           Partecipanti: {sessione.numeroPartecipanti ?? '-'}
                         </Typography>
-                        <Typography variant="body2" color="textSecondary">
-                          Inizio: {sessione.orarioInizio ? new Date(sessione.orarioInizio).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}
-                        </Typography>
+<Typography variant="body2" color="textSecondary">
+  Inizio: {sessione.orarioInizio ? new Date(sessione.orarioInizio + 'Z').toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '-'}
+</Typography>
+
                       </>
                     ) : (
                       <Typography variant="body2" color="textSecondary">Nessuna sessione attiva</Typography>
