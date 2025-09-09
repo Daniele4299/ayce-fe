@@ -543,6 +543,12 @@ useEffect(() => {
                         >
                           {gruppo.titolo}
                         </Typography>
+                          {/* Spacer */}
+  <Box sx={{ flex: 1 }} />
+{/* Totale a destra */}
+  <Typography sx={{ fontWeight: 'bold', fontSize: '0.9rem' }}>
+    Qta: {gruppo.ordini.reduce((sum, o) => sum + o.quantita, 0)}
+  </Typography>
                       </Box>
 
                       <Divider />

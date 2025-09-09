@@ -1,5 +1,7 @@
 'use client';
 
+import DeleteIcon from '@mui/icons-material/Delete';
+import IconButton from '@mui/material/IconButton';
 import {
   Box,
   Button,
@@ -31,6 +33,7 @@ type Sessione = {
 };
 
 type ResocontoDto = {
+  id: number;
   nome: string;             
   quantita: number;
   prezzoUnitario: number;
@@ -207,6 +210,26 @@ const TavoloManagementForm = () => {
       setErrore('Errore apertura sessione');
     }
   };
+
+  const handleDeleteOrdine = async (ordine: ResocontoDto) => {
+  if (!confirm(`Sei sicuro di voler eliminare l'ordine di "${ordine.nome}"?`)) return;
+
+  try {
+    const res = await fetch(`${backendUrl}/api/ordini/${ordine.id}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    if (res.ok) {
+      // Ricarica il resoconto
+      if (openResocontoModal) fetchResoconto(openResocontoModal);
+    } else {
+      console.error('Errore eliminazione ordine');
+    }
+  } catch (err) {
+    console.error(err);
+  }
+};
+
 
   const getSessioneTavolo = (tavoloId: number) =>
     sessioni.find((s) => s.tavolo && s.tavolo.id === tavoloId && s.stato === 'ATTIVA');
@@ -396,23 +419,26 @@ const TavoloManagementForm = () => {
             </Button>
           </DialogActions>
         </Dialog>
-
-        {/* Modale Resoconto */}
 {/* Modale Resoconto */}
 <Dialog open={!!openResocontoModal} onClose={() => setOpenResocontoModal(null)} maxWidth="md" fullWidth>
   <DialogTitle>Resoconto Tavolo #{openResocontoModal?.tavolo?.numero}</DialogTitle>
   <DialogContent>
     {resoconto.length > 0 ? (
       resoconto.map((r, idx) => (
-        <Box key={idx} mb={2} p={2} border={1} borderColor="grey.300" borderRadius={2}>
-          <Typography variant="body2"><b>Prodotto:</b> {r.nome}</Typography>
-          <Typography variant="body2"><b>Quantità:</b> {r.quantita}</Typography>
-          <Typography variant="body2"><b>Prezzo unitario:</b> € {r.prezzoUnitario.toFixed(2)}</Typography>
-          <Typography variant="body2"><b>Totale riga:</b> € {r.totale.toFixed(2)}</Typography>
-          {r.orario && (
-            <Typography variant="body2"><b>Ora:</b> {new Date(r.orario).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Typography>
-          )}
-          {r.stato && <Typography variant="body2"><b>Stato consegna:</b> {r.stato}</Typography>}
+        <Box key={idx} mb={2} p={2} border={1} borderColor="grey.300" borderRadius={2} display="flex" justifyContent="space-between" alignItems="center">
+          <Box>
+            <Typography variant="body2"><b>Prodotto:</b> {r.nome}</Typography>
+            <Typography variant="body2"><b>Quantità:</b> {r.quantita}</Typography>
+            <Typography variant="body2"><b>Prezzo unitario:</b> € {r.prezzoUnitario.toFixed(2)}</Typography>
+            <Typography variant="body2"><b>Totale riga:</b> € {r.totale.toFixed(2)}</Typography>
+            {r.orario && (
+              <Typography variant="body2"><b>Ora:</b> {new Date(r.orario).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Typography>
+            )}
+            {r.stato && <Typography variant="body2"><b>Stato consegna:</b> {r.stato}</Typography>}
+          </Box>
+          <IconButton color="error" onClick={() => handleDeleteOrdine(r)}>
+            <DeleteIcon />
+          </IconButton>
         </Box>
       ))
     ) : (
