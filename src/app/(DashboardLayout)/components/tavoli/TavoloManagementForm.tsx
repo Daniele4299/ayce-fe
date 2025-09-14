@@ -47,15 +47,73 @@ type ResocontoDto = {
 const TavoloManagementForm = () => {
   const [tavoli, setTavoli] = useState<Tavolo[]>([]);
   const [sessioni, setSessioni] = useState<Sessione[]>([]);
-  const [numero, setNumero] = useState<number>(0);
+  const [numero, setNumero] = useState<number | undefined>(0);
   const [loading, setLoading] = useState(false);
   const [errore, setErrore] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<null | Tavolo>(null);
   const [openSessioneModal, setOpenSessioneModal] = useState<null | Tavolo>(null);
-  const [numeroPartecipanti, setNumeroPartecipanti] = useState<number>(1);
+  const [numeroPartecipanti, setNumeroPartecipanti] = useState<number | undefined>(1);
   const [isAyce, setIsAyce] = useState(true);
   const [confirmDisattiva, setConfirmDisattiva] = useState<null | Sessione>(null);
   const [openAddModal, setOpenAddModal] = useState(false);
+  const [openAddProductModal, setOpenAddProductModal] = useState(false);
+  const [prodotti, setProdotti] = useState<{ id: number; nome: string; prezzo: number }[]>([]);
+  const [searchProdotto, setSearchProdotto] = useState('');
+  const [selectedProdotto, setSelectedProdotto] = useState<{ id: number; nome: string; prezzo: number } | null>(null);
+  const [quantitaProdotto, setQuantitaProdotto] = useState<number | undefined>(1);
+
+
+// 🔹 funzione per aprire modale prodotti
+const apriAddProductModal = async () => {
+  try {
+    const res = await fetch(`${backendUrl}/api/prodotti`, { credentials: 'include' });
+    if (res.ok) {
+      const data = await res.json();
+      setProdotti(data);
+      setSearchProdotto('');
+      setSelectedProdotto(null);
+      setQuantitaProdotto(1);
+      setOpenAddProductModal(true);
+    }
+  } catch (err) {
+    console.error('Errore caricamento prodotti', err);
+  }
+};
+
+// 🔹 funzione conferma nuovo ordine
+const confermaNuovoOrdine = async () => {
+  if (!selectedProdotto || !openResocontoModal) return;
+
+  try {
+    const body = {
+      sessione: { id: openResocontoModal.id },
+      tavolo: { id: openResocontoModal.tavolo?.id },
+      prodotto: { id: selectedProdotto.id },
+      quantita: quantitaProdotto || 1,
+      prezzoUnitario: selectedProdotto.prezzo,
+      orario: `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}T${String(new Date().getHours()).padStart(2,'0')}:${String(new Date().getMinutes()).padStart(2,'0')}:${String(new Date().getSeconds()).padStart(2,'0')}`,
+      flagConsegnato: false,
+      stato: 'INVIATO', // oppure un valore di default coerente con il tuo backend
+    };
+
+    const res = await fetch(`${backendUrl}/api/ordini/add-resoconto`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(body),
+    });
+
+    if (res.ok) {
+      fetchResoconto(openResocontoModal); // ricarica resoconto
+      setOpenAddProductModal(false);
+    } else {
+      console.error('Errore creazione ordine');
+    }
+  } catch (err) {
+    console.error('Errore creazione ordine', err);
+  }
+};
+
 
   // nuovi stati per Resoconto
   const [openResocontoModal, setOpenResocontoModal] = useState<null | Sessione>(null);
@@ -111,7 +169,7 @@ const TavoloManagementForm = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ numero, attivo: true }),
+        body: JSON.stringify({ numero: numero ?? 0, attivo: true }),
       });
       if (res.ok) {
         setNumero(0);
@@ -143,7 +201,7 @@ const TavoloManagementForm = () => {
   const disattivaSessione = async (sessione: Sessione) => {
     const win = window.open('', '_blank');
     try {
-      const res = await fetch(`${backendUrl}/api/sessioni/${sessione.id}`, {
+      const res = await fetch(`${backendUrl}/api/sessioni/${sessione.id}/disattiva`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -187,7 +245,7 @@ const TavoloManagementForm = () => {
       id: null,
       tavolo,
       orarioInizio: new Date().toISOString(),
-      numeroPartecipanti,
+      numeroPartecipanti: numeroPartecipanti ?? 0,
       isAyce,
       stato: 'ATTIVA',
     };
@@ -204,6 +262,10 @@ const TavoloManagementForm = () => {
         setOpenSessioneModal(null);
         setNumeroPartecipanti(1);
         setIsAyce(true);
+      } else if (res.status === 409) {
+      await fetchSessioni();
+      setOpenSessioneModal(null);
+      setErrore('Esiste già una sessione attiva per questo tavolo');
       } else setErrore('Errore apertura sessione');
     } catch (err) {
       console.error(err);
@@ -239,7 +301,13 @@ const TavoloManagementForm = () => {
     try {
       const res = await fetch(`${backendUrl}/api/sessioni/${sessione.id}/resoconto`, { credentials: 'include' });
       if (res.ok) {
-        setResoconto(await res.json());
+        const data: ResocontoDto[] = await res.json();
+        setResoconto(
+          data.sort((a, b) => {
+            if (!a.orario || !b.orario) return 0;
+            return new Date(a.orario).getTime() - new Date(b.orario).getTime();
+          })
+        );
         setOpenResocontoModal(sessione);
       }
     } catch (err) {
@@ -247,10 +315,11 @@ const TavoloManagementForm = () => {
     }
   };
 
+
   // 🔹 nuovo: reset timer via update
   const resetTimer = async (sessione: Sessione) => {
     try {
-      const res = await fetch(`${backendUrl}/api/sessioni/${sessione.id}`, {
+      const res = await fetch(`${backendUrl}/api/sessioni/${sessione.id}/reset-timer`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -281,10 +350,6 @@ const TavoloManagementForm = () => {
     Genera PDF QR
   </Button>
 </Box>
-
-
-        
-
         <Grid container spacing={2}>
           {tavoli.map((t) => {
             const sessione = getSessioneTavolo(t.id);
@@ -349,18 +414,34 @@ const TavoloManagementForm = () => {
           <DialogContent>
             <DialogContentText>Inserisci il numero del nuovo tavolo</DialogContentText>
             <TextField
-              autoFocus
-              margin="dense"
-              type="number"
-              label="Numero Tavolo"
-              fullWidth
-              value={numero}
-              onChange={(e) => setNumero(Number(e.target.value) || 0)}
-            />
+  autoFocus
+  margin="dense"
+  type="number"
+  label="Numero Tavolo"
+  fullWidth
+  value={numero ?? ''}
+  onChange={(e) => {
+    const val = e.target.value;
+    if (val === '') {
+      setNumero(undefined); // permette cancellare tutto
+    } else {
+      const num = Number(val);
+      setNumero(num > 0 ? num : undefined); // minimo 1
+    }
+  }}
+/>
+
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setOpenAddModal(false)}>Annulla</Button>
-            <Button variant="contained" onClick={handleAddTavolo} disabled={loading}>Conferma</Button>
+            <Button
+  variant="contained"
+  onClick={handleAddTavolo}
+  disabled={loading || !numero || numero < 1}
+>
+  Conferma
+</Button>
+
           </DialogActions>
         </Dialog>
 
@@ -398,15 +479,24 @@ const TavoloManagementForm = () => {
           <DialogTitle>Apri Sessione Tavolo #{openSessioneModal?.numero}</DialogTitle>
           <DialogContent>
             <DialogContentText>Inserisci numero partecipanti e tipo di sessione</DialogContentText>
-            <TextField
-              autoFocus
-              margin="dense"
-              label="Numero partecipanti"
-              type="number"
-              fullWidth
-              value={numeroPartecipanti}
-              onChange={(e) => setNumeroPartecipanti(Number(e.target.value) || 0)}
-            />
+<TextField
+  autoFocus
+  margin="dense"
+  label="Numero partecipanti"
+  type="number"
+  fullWidth
+  value={numeroPartecipanti ?? ''}
+  onChange={(e) => {
+    const val = e.target.value;
+    if (val === '') {
+      setNumeroPartecipanti(undefined); // permette cancellare tutto
+    } else {
+      const num = Number(val);
+      setNumeroPartecipanti(num > 0 ? num : undefined); // minimo 1
+    }
+  }}
+/>
+
             <FormControlLabel
               control={<Switch checked={isAyce} onChange={() => setIsAyce(!isAyce)} />}
               label="All You Can Eat (AYCE)"
@@ -414,9 +504,15 @@ const TavoloManagementForm = () => {
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setOpenSessioneModal(null)}>Annulla</Button>
-            <Button variant="contained" color="primary" onClick={() => openSessioneModal && apriSessione(openSessioneModal)}>
-              Apri
-            </Button>
+            <Button
+  variant="contained"
+  color="primary"
+  onClick={() => openSessioneModal && apriSessione(openSessioneModal)}
+  disabled={!numeroPartecipanti || numeroPartecipanti < 1}
+>
+  Apri
+</Button>
+
           </DialogActions>
         </Dialog>
 {/* Modale Resoconto */}
@@ -445,14 +541,19 @@ const TavoloManagementForm = () => {
       <Typography variant="body2">Nessun ordine registrato</Typography>
     )}
   </DialogContent>
-  <DialogActions>
-    {openResocontoModal?.isAyce && (
-      <Button color="warning" onClick={() => setConfirmReset(openResocontoModal)}>
-        Resetta timer ordinazione
+    <DialogActions sx={{ justifyContent: 'space-between' }}>
+      <Button onClick={apriAddProductModal}>
+        Aggiungi prodotto
       </Button>
-    )}
-    <Button onClick={() => setOpenResocontoModal(null)}>Chiudi</Button>
-  </DialogActions>
+      <Box>
+        {openResocontoModal?.isAyce && (
+          <Button color="warning" onClick={() => setConfirmReset(openResocontoModal)}>
+            Resetta timer ordinazione
+          </Button>
+        )}
+        <Button onClick={() => setOpenResocontoModal(null)}>Chiudi</Button>
+      </Box>
+    </DialogActions>
 </Dialog>
 
         {/* Modale conferma reset timer */}
@@ -468,6 +569,68 @@ const TavoloManagementForm = () => {
             </Button>
           </DialogActions>
         </Dialog>
+        <Dialog open={openAddProductModal} onClose={() => setOpenAddProductModal(false)} maxWidth="sm" fullWidth>
+  <DialogTitle>Aggiungi Prodotto</DialogTitle>
+  <DialogContent>
+    <TextField
+      fullWidth
+      margin="dense"
+      label="Cerca prodotto"
+      value={searchProdotto}
+      onChange={(e) => setSearchProdotto(e.target.value)}
+    />
+    <Box mt={2} maxHeight={300} overflow="auto">
+      {prodotti
+        .filter(p => p.nome.toLowerCase().includes(searchProdotto.toLowerCase()))
+        .map((p) => (
+          <Box
+            key={p.id}
+            p={1}
+            border={1}
+            borderColor={selectedProdotto?.id === p.id ? 'primary.main' : 'grey.300'}
+            borderRadius={1}
+            mb={1}
+            sx={{ cursor: 'pointer' }}
+            onClick={() => setSelectedProdotto(p)}
+          >
+            <Typography>{p.nome} - € {p.prezzo.toFixed(2)}</Typography>
+          </Box>
+        ))}
+      {prodotti.filter(p => p.nome.toLowerCase().includes(searchProdotto.toLowerCase())).length === 0 && (
+        <Typography>Nessun prodotto trovato</Typography>
+      )}
+    </Box>
+    {selectedProdotto && (
+      <TextField
+    type="number"
+    label="Quantità"
+    fullWidth
+    margin="dense"
+    value={quantitaProdotto !== undefined ? quantitaProdotto : ''} // <-- mai undefined
+    onChange={(e) => {
+      const val = e.target.value;
+      if (val === '') {
+        setQuantitaProdotto(undefined); // ok, interno ok
+      } else {
+        const num = Number(val);
+        setQuantitaProdotto(num > 0 ? num : 1); // minimo 1
+      }
+    }}
+  />
+    )}
+  </DialogContent>
+  <DialogActions>
+    <Button onClick={() => setOpenAddProductModal(false)}>Annulla</Button>
+<Button
+  variant="contained"
+  onClick={confermaNuovoOrdine}
+  disabled={!selectedProdotto || (quantitaProdotto ?? 0) < 1}
+>
+  Conferma
+</Button>
+  </DialogActions>
+</Dialog>
+
       </CardContent>
     </Card>
   );

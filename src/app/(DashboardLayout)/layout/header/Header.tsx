@@ -5,6 +5,8 @@ import Link from 'next/link';
 // components
 import Profile from './Profile';
 import { IconBellRinging, IconMenu } from '@tabler/icons-react';
+import { useWS } from '@/app/(DashboardLayout)/ws/WSContext';
+import { usePathname } from 'next/navigation';
 
 interface ItemType {
   toggleMobileSidebar:  (event: React.MouseEvent<HTMLElement>) => void;
@@ -29,6 +31,10 @@ const Header = ({toggleMobileSidebar}: ItemType) => {
     width: '100%',
     color: theme.palette.text.secondary,
   }));
+
+  const { wsConnesso } = useWS();
+
+  const pathname = usePathname();
 
   return (
     <AppBarStyled position="sticky" color="default">
@@ -58,6 +64,23 @@ const Header = ({toggleMobileSidebar}: ItemType) => {
 
         </IconButton>
         <Box flexGrow={1} />
+{/* Stato WebSocket */}
+{pathname === '/private/admin/comande' && (
+  <Box
+    sx={{
+      px: 2,
+      py: 0.5,
+      borderRadius: 1,
+      bgcolor: wsConnesso ? 'success.main' : 'error.main',
+      color: 'common.white',
+      fontWeight: 'bold',
+      fontSize: '0.875rem',
+      whiteSpace: 'nowrap',
+    }}
+  >
+    {wsConnesso ? 'Connesso' : 'Riconnessione'}
+  </Box>
+)}
         <Stack spacing={1} direction="row" alignItems="center">
           {/* <Button variant="contained" component={Link} href="/authentication/login"   disableElevation color="primary" >
             Login

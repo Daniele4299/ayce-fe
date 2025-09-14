@@ -1,9 +1,10 @@
 import {
-  IconCopy,
   IconLayoutDashboard,
-  IconLogin,
-  IconMoodHappy,
-  IconTypography,
+  IconSticker2,
+  IconSettings,
+  IconGraph,
+  IconUser,
+  IconChefHat
 } from "@tabler/icons-react";
 
 import { uniqueId } from "lodash";
@@ -27,13 +28,13 @@ const Menuitems = [
   {
     id: uniqueId(),
     title: "Gestione Tavoli",
-    icon: IconTypography,
+    icon: IconSticker2,
     href: "/private/admin/tavoli",
   },
   {
     id: uniqueId(),
     title: "Gestione Prodotti",
-    icon: IconCopy,
+    icon: IconChefHat,
     href: "/private/admin/prodotti",
   },
   {
@@ -43,7 +44,7 @@ const Menuitems = [
   {
     id: uniqueId(),
     title: "Gestione Utenze",
-    icon: IconLogin,
+    icon: IconUser,
     href: "/private/admin/utenze",
   },
   {
@@ -53,8 +54,14 @@ const Menuitems = [
   {
     id: uniqueId(),
     title: "Statistiche",
-    icon: IconMoodHappy,
+    icon: IconGraph,
     href: "/private/admin/statistiche",
+  },
+  {
+    id: uniqueId(),
+    title: "Impostazioni",
+    icon: IconSettings,
+    href: "/private/admin/impostazioni",
   },
 
 ];

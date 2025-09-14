@@ -2,26 +2,18 @@
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Box, CircularProgress, Alert } from '@mui/material';
+import { Box, CircularProgress, Alert, Snackbar, IconButton } from '@mui/material';
 import HeaderTavolo from '@/app/(ClientLayout)/components/tavoli/HeaderTavolo';
 import ProductListVirtualized from '@/app/(ClientLayout)/components/tavoli/ProductListVirtualized';
 import FooterOrdine from '@/app/(ClientLayout)/components/tavoli/FooterOrdine';
 import dynamic from 'next/dynamic';
 import { Client, IMessage } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
-import { Snackbar, IconButton } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-
-
 
 const StoricoDialog = dynamic(() => import('../../components/tavoli/StoricoTavolo'), { ssr: false });
 
-interface TavoloMessagePayload { [prodottoId: number]: number; }
 interface TavoloMessage { tipoEvento: string; payload: string; }
-
-const COOLDOWN_MINUTI = 15;
-const PRANZO_START_HOUR = 2;
-const PRANZO_END_HOUR = 16;
 
 const CustomerTablePage = () => {
   const { numTavolo } = useParams();
@@ -33,12 +25,15 @@ const CustomerTablePage = () => {
   const [sessione, setSessione] = useState<any>(null);
   const [prodotti, setProdotti] = useState<any[]>([]);
   const [ordine, setOrdine] = useState<Record<number, number>>({});
-  const [ordineBloccato, setOrdineBloccato] = useState(false);
   const [cooldown, setCooldown] = useState<number | null>(null);
   const [storicoOpen, setStoricoOpen] = useState(false);
   const [storico, setStorico] = useState<any[]>([]);
   const [categoriaSelezionata, setCategoriaSelezionata] = useState<number | 'all'>('all');
-  const [toastError, setToastError] = useState<{ text: string; key: number } | null>(null);
+  const [toastMessage, setToastMessage] = useState<{ text: string; type: 'error' | 'warning' | 'success'; key: number } | null>(null);
+  const [maxPortate, setMaxPortate] = useState<number | undefined>(undefined);
+  const [isPranzoNow, setIsPranzoNow] = useState<boolean>(false);
+  const [wsConnected, setWsConnected] = useState(false);
+
 
 
   const stompClientRef = useRef<Client | null>(null);
@@ -46,23 +41,10 @@ const CustomerTablePage = () => {
   const cooldownIntervalRef = useRef<number | null>(null);
 
   const ordineRef = useRef(ordine);
-  const prodottiRef = useRef(prodotti);
   const sessioneRef = useRef(sessione);
 
-  const [sessioneCompleta, setSessioneCompleta] = useState<any>(null);
-
-
   useEffect(() => { ordineRef.current = ordine; }, [ordine]);
-  useEffect(() => { prodottiRef.current = prodotti; }, [prodotti]);
   useEffect(() => { sessioneRef.current = sessione; }, [sessione]);
-
-  const calcolaCooldownDaSessione = (ultimoOrdine?: string) => {
-  if (!ultimoOrdine) return null;
-  const diffSec = Math.floor((Date.now() - Date.parse(ultimoOrdine)) / 1000);
-  const remaining = COOLDOWN_MINUTI * 60 - diffSec;
-  return remaining > 0 ? remaining : null;
-};
-
 
   // ---------- Recupero sessione
   useEffect(() => {
@@ -76,47 +58,28 @@ const CustomerTablePage = () => {
           if (userData.sessioneId && userData.tavoloNum !== Number(numTavolo)) { router.replace(`/tavoli/${userData.tavoloNum}`); return; }
           if (userData.sessioneId) { setSessione(userData); return; }
         }
-        const loginRes = await fetch(`${backendUrl}/auth/login-tavolo/${numTavolo}`, { method: 'POST', credentials: 'include' });
-        if (!loginRes.ok) throw new Error('Errore login tavolo');
-        setSessione(await loginRes.json());
+        const loginRes = await fetch(`${backendUrl}/auth/login-tavolo/${numTavolo}`, {
+        method: 'POST',
+        credentials: 'include'
+      });
+      const loginData = await loginRes.json();
+
+      if (loginRes.status === 404) {
+        setErrore('Il tavolo non esiste.');
+        setSessione(null);
+      } else if (loginRes.status === 409) {
+        setErrore(null); // non è un errore, solo sessione non inizializzata
+        setSessione(null);
+      } else if (!loginRes.ok) {
+        throw new Error('Errore login tavolo');
+      } else {
+        setSessione(loginData);
+      }
       } catch (err) { console.error(err); setErrore('Errore nel collegamento al tavolo'); }
       finally { setLoading(false); checkDone.current = true; }
     };
     checkSessione();
   }, [numTavolo, backendUrl, router]);
-
-  // ----------- Recupero sessione completa
-// ----------- Recupero sessione completa
-const fetchSessioneCompleta = useCallback(async () => {
-  if (!sessioneRef.current?.sessioneId) return;
-  try {
-    const res = await fetch(`${backendUrl}/api/sessioni/${sessioneRef.current.sessioneId}`, {
-      credentials: 'include'
-    });
-    if (!res.ok) throw new Error('Errore fetch sessione completa');
-    const data = await res.json();
-    setSessioneCompleta(data);
-
-    // calcolo cooldown da ultimoOrdineInviato
-    const remaining = calcolaCooldownDaSessione(data.ultimoOrdineInviato);
-    if (remaining) {
-      setCooldown(remaining);
-      setOrdineBloccato(true);
-    } else {
-      setCooldown(null);
-      setOrdineBloccato(false);
-    }
-  } catch (err) {
-    console.error(err);
-  }
-}, [backendUrl]);
-
-useEffect(() => {
-  fetchSessioneCompleta();
-}, [sessione, fetchSessioneCompleta]);
-
-
-
 
   // ---------- Recupero prodotti
   useEffect(() => {
@@ -127,91 +90,107 @@ useEffect(() => {
       .catch(err => { console.error(err); setErrore('Errore nel recupero dei prodotti'); });
   }, [sessione, backendUrl]);
 
-  // ---------- Recupero ordine temporaneo
-  useEffect(() => {
-    if (!sessione) return;
-    fetch(`${backendUrl}/api/tavoli/${sessione.tavoloId}/ordine-temporaneo`, { credentials: 'include' })
-      .then(res => { if (!res.ok) throw new Error(); return res.json(); })
-      .then(data => setOrdine(data || {}))
-      .catch(console.error);
-  }, [sessione, backendUrl]);
+// ---------- WebSocket con reconnect stabile su iPhone
+useEffect(() => {
+  if (!sessione) return;
 
-  // ---------- WebSocket
-  useEffect(() => {
-    if (!sessione) return;
-    const socket = new SockJS(`${backendUrl}/ws`);
-    const client = new Client({ webSocketFactory: () => socket, debug: () => {}, reconnectDelay: 5000 });
+  let mounted = true; // evita setState su componente smontato
 
-    client.onConnect = () => {
-      client.subscribe(`/topic/tavolo/${sessione.tavoloId}`, (msg: IMessage) => {
-        try {
-          const data: TavoloMessage = JSON.parse(msg.body);
-          if (data.tipoEvento === 'UPDATE_TEMP') {
-            let parsed: any; try { parsed = JSON.parse(data.payload); } catch { parsed = data.payload; }
-            if (parsed && typeof parsed === 'object') {
-              setOrdine(parsed.ordine ?? parsed);
-              if (parsed.lastOrder) {
-                const diff = Math.max(0, COOLDOWN_MINUTI * 60 - Math.floor((Date.now() - Date.parse(parsed.lastOrder)) / 1000));
-                if (diff > 0) {
-                  setCooldown(diff);
-                  setOrdineBloccato(true);
-                }
-              }
+  // Pulizia eventuale client precedente
+  if (stompClientRef.current) {
+    try { stompClientRef.current.deactivate(); } catch {}
+    stompClientRef.current = null;
+  }
+
+  const client = new Client({
+    brokerURL: undefined,          // usiamo SockJS
+    reconnectDelay: 5000,          // tenta di riconnettere ogni 5s
+    debug: () => {},
+    webSocketFactory: () => new SockJS(`${backendUrl}/ws`)
+  });
+
+  client.onConnect = () => {
+    if (!mounted) return;
+    console.log('WS connesso');
+    setWsConnected(true);
+
+    client.subscribe(`/topic/tavolo/${sessione.tavoloId}`, (msg: IMessage) => {
+      try {
+        const data: TavoloMessage = JSON.parse(msg.body);
+        if (!mounted) return;
+
+        if (data.tipoEvento === 'REFRESH') window.location.reload();
+
+        if (data.tipoEvento === 'UPDATE_TEMP') {
+          let parsed: any;
+          try { parsed = JSON.parse(data.payload); } catch { parsed = data.payload; }
+          if (parsed && typeof parsed === 'object') {
+            const ordinePayload = parsed.ordine ?? parsed;
+            setOrdine(ordinePayload || {});
+
+            if (parsed.lastOrder && parsed.cooldownMinuti) {
+              const diff = Math.max(0, parsed.cooldownMinuti * 60 - Math.floor((Date.now() - Date.parse(parsed.lastOrder)) / 1000));
+              if (diff > 0) setCooldown(diff);
             }
-} else if (data.tipoEvento === 'ORDER_SENT') {
-  setOrdine({});
-  fetchSessioneCompleta();
-} else if (data.tipoEvento === 'ERROR') {
-  setToastError({ text: data.payload || 'Errore sconosciuto', key: Date.now() });
-}
 
+            if (parsed.maxPortatePerPersona && parsed.numeroPartecipanti) {
+              setMaxPortate(parsed.maxPortatePerPersona * parsed.numeroPartecipanti);
+            }
 
+            if (parsed.pranzoStartHour !== undefined && parsed.pranzoEndHour !== undefined) {
+              const nowHour = new Date().getHours();
+              setIsPranzoNow(nowHour >= parsed.pranzoStartHour && nowHour < parsed.pranzoEndHour);
+            }
+          }
+        }
 
-        } catch (err) { console.error('WS message handling error', err); }
-      });
-      client.publish({ destination: '/app/tavolo', body: JSON.stringify({ tipoEvento: 'GET_STATUS', payload: '' }) });
-    };
+        if (data.tipoEvento === 'UPDATE_TEMP_DELTA') {
+          let parsed: any;
+          try { parsed = JSON.parse(data.payload); } catch { parsed = data.payload; }
+          if (parsed && typeof parsed === 'object' && parsed.prodottoId !== undefined) {
+            const pid = Number(parsed.prodottoId);
+            const q = Number(parsed.quantita) || 0;
+            setOrdine(prev => {
+              const copy = { ...prev };
+              if (q <= 0) delete copy[pid]; else copy[pid] = q;
+              return copy;
+            });
+          }
+        }
 
-    client.onWebSocketClose = () => {
-      console.warn('WS chiuso, provo a riconnettere...');
-      setTimeout(() => {
-        if (!client.active) client.activate();
-      }, 2000);
-    };
+        if (['ORDER_SENT', 'ERROR', 'WARNING', 'SUCCESS'].includes(data.tipoEvento)) {
+          const typeMap: Record<string, 'error'|'warning'|'success'> = {
+            ERROR: 'error',
+            WARNING: 'warning',
+            SUCCESS: 'success'
+          };
+          if (data.tipoEvento !== 'ORDER_SENT') {
+            setToastMessage({ text: data.payload || '', type: typeMap[data.tipoEvento], key: Date.now() });
+          }
+        }
 
-    client.activate(); 
-    stompClientRef.current = client;
+      } catch (err) { console.error('WS message handling error', err); }
+    });
 
-    return () => { 
-      client.deactivate(); 
-      stompClientRef.current = null; 
-      if (cooldownIntervalRef.current) clearInterval(cooldownIntervalRef.current); 
-    };
-  }, [sessione, backendUrl]);
+    client.publish({ destination: '/app/tavolo', body: JSON.stringify({ tipoEvento: 'GET_STATUS', payload: '' ,sessioneId: sessione.sessioneId}) });
+  };
 
-  // ---------- Watchdog WS (refresh automatico se disconnesso)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const client = stompClientRef.current;
-      if (!client || !client.connected) {
-        console.warn('WebSocket non connesso, forzo refresh');
-        window.location.reload();
-      }
-    }, 10000); // ogni 10 secondi
-    return () => clearInterval(interval);
-  }, []);
+  client.onStompError = () => setWsConnected(false);
+  client.onWebSocketClose = () => setWsConnected(false);
+  client.onWebSocketError = () => setWsConnected(false);
 
-  // ---------- Refresh al click se WS disconnesso
-  useEffect(() => {
-    const handleClick = () => {
-      const client = stompClientRef.current;
-      if (!client || !client.connected) {
-        window.location.reload();
-      }
-    };
-    window.addEventListener('click', handleClick);
-    return () => window.removeEventListener('click', handleClick);
-  }, []);
+  client.activate();
+  stompClientRef.current = client;
+
+  return () => {
+    mounted = false;
+    try { client.deactivate(); } catch {}
+    stompClientRef.current = null;
+    setWsConnected(false);
+    if (cooldownIntervalRef.current) clearInterval(cooldownIntervalRef.current);
+  };
+}, [sessione, backendUrl]);
+
 
 
   // ---------- Timer cooldown
@@ -224,7 +203,6 @@ useEffect(() => {
         if (!prev || prev <= 1) {
           clearInterval(cooldownIntervalRef.current!);
           cooldownIntervalRef.current = null;
-          setOrdineBloccato(false);
           return null;
         }
         return prev - 1;
@@ -234,39 +212,28 @@ useEffect(() => {
     return () => { if (cooldownIntervalRef.current) clearInterval(cooldownIntervalRef.current); };
   }, [cooldown]);
 
+  const showWsErrorToast = () => {
+  setToastMessage({ text: 'Riconnessione, riprova tra 5s', type: 'error', key: Date.now() });
+};
+
   // ---------- Funzioni di gestione ordine
-  const modificaQuantita = useCallback((idProdotto: number, delta: number, categoria: number) => {
+  const modificaQuantita = useCallback((idProdotto: number, delta: number) => {
     const client = stompClientRef.current;
-    if (!client?.connected) {
-      window.location.reload();
-      return;
-    }
+if (!client?.connected) {
+  showWsErrorToast();
+  return;
+}
 
-    const sess = sessioneRef.current;
-    const ord = ordineRef.current;
-    const prods = prodottiRef.current;
-
-    console.log('sessioneRef.current:', sessioneRef.current);
-
-    if (categoria < 100 && sess?.isAyce) {
-      let totalNormal = 0;
-      for (const [pidStr, q] of Object.entries(ord)) {
-        const pid = Number(pidStr);
-        if (!q || q <= 0) continue;
-        const prod = prods.find(p => p.id === pid);
-        if (prod && (prod.categoria?.id ?? 0) < 100) totalNormal += q;
-      }
-      if (totalNormal + delta > (sess.numeroPartecipanti * 5)) {
-        alert(`Limite portate raggiunto: ${sess.numeroPartecipanti * 5}`);
-        return;
-      }
-    }
 
     client.publish({
       destination: '/app/tavolo',
-      body: JSON.stringify({ tipoEvento: delta > 0 ? 'ADD_ITEM_TEMP' : 'REMOVE_ITEM_TEMP', payload: JSON.stringify({ prodottoId: idProdotto, quantita: Math.abs(delta) }) })
+      body: JSON.stringify({
+        tipoEvento: delta > 0 ? 'ADD_ITEM_TEMP' : 'REMOVE_ITEM_TEMP',
+        sessioneId: sessione.sessioneId,
+        payload: JSON.stringify({ prodottoId: idProdotto, quantita: Math.abs(delta) })
+      })
     });
-  }, []);
+  }, [sessione]);
 
   const inviaOrdine = useCallback(() => {
     const client = stompClientRef.current;
@@ -274,37 +241,8 @@ useEffect(() => {
       window.location.reload();
       return;
     }
-
-    const sess = sessioneRef.current;
-    const ord = ordineRef.current;
-    const prods = prodottiRef.current;
-
-    const hasNormal = Object.keys(ord).some(idStr => {
-      const id = Number(idStr), qty = ord[id] || 0;
-      if (qty <= 0) return false;
-      return (prods.find(p => p.id === id)?.categoria?.id ?? 0) < 100;
-    });
-
-    const hasSpecial = Object.keys(ord).some(idStr => {
-      const id = Number(idStr), qty = ord[id] || 0;
-      if (qty <= 0) return false;
-      return (prods.find(p => p.id === id)?.categoria?.id ?? 0) >= 100;
-    });
-
-    if (sess?.isAyce && ordineBloccato && hasNormal) {
-      if (hasSpecial && hasNormal) {
-        const lista = Array.from(new Set(prods.filter(p => (p.categoria?.id ?? 0) >= 100).map(p => p.categoria?.nome ?? `Categoria ${(p.categoria?.id ?? 0)}`))).join(', ') || 'categorie speciali';
-        alert(`Durante il timer puoi ordinare solo dalle seguenti categorie: ${lista} - rimuovi gli altri prodotti prima di ordinare`);
-        return;
-      } else {
-        const remaining = cooldown ?? 0;
-        alert(`Devi aspettare ancora ${Math.floor(remaining / 60)}:${(remaining % 60).toString().padStart(2, '0')} prima di inviare prodotti dalla lista. Puoi comunque ordinare categorie ≥100.`);
-        return;
-      }
-    }
-
-    client.publish({ destination: '/app/tavolo', body: JSON.stringify({ tipoEvento: 'ORDER_SENT', payload: '' }) });
-  }, [ordineBloccato, cooldown]);
+    client.publish({ destination: '/app/tavolo', body: JSON.stringify({ tipoEvento: 'ORDER_SENT', payload: '' , sessioneId: sessione.sessioneId}) });
+  }, [sessione]);
 
   const fetchStorico = useCallback(async () => {
     const sess = sessioneRef.current;
@@ -326,29 +264,17 @@ useEffect(() => {
 
   const capitalize = useCallback((s?: string) => s ? s.charAt(0).toUpperCase() + s.toLowerCase().slice(1) : '', []);
 
-const numPortateSelezionate = sessioneCompleta?.isAyce === false
-  ? undefined
-  : Object.entries(ordine)
-      .filter(([id, q]) => {
-        const prod = prodotti.find(p => p.id === Number(id));
-        return !!prod && ((prod.categoria?.id ?? 0) < 100) && Number(q) > 0;
-      })
-      .reduce((sum, [, q]) => sum + Number(q), 0);
-
-const numPortateMax = sessioneCompleta?.isAyce === false
-  ? undefined
-  : sessioneCompleta?.numeroPartecipanti
-    ? sessioneCompleta.numeroPartecipanti * 5
-    : 0;
-
-
   // ---------- Early guards
   if (loading) return <CircularProgress sx={{ m: 4 }} />;
   if (errore) return <Alert severity="error" sx={{ m: 4 }}>{errore}</Alert>;
   if (!sessione) return <Alert severity="info" sx={{ m: 4 }}>Sessione non ancora aperta, attendere il personale</Alert>;
 
-  const nowHour = new Date().getHours();
-  const isPranzoNow = (nowHour >= PRANZO_START_HOUR && nowHour < PRANZO_END_HOUR);
+// Calcolo totale portate AYCE (solo prodotti categoria < 100)
+const totalPortate = prodotti
+  .filter(p => p.categoria?.id < 100)             // solo prodotti normali
+  .reduce((sum, p) => sum + (ordine[p.id] || 0), 0);
+
+  const hasItems = Object.values(ordine).some(q => q > 0);
 
   return (
     <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: theme => theme.palette.background.default }}>
@@ -369,40 +295,37 @@ const numPortateMax = sessioneCompleta?.isAyce === false
         isPranzoNow={isPranzoNow}
       />
 
-<Snackbar
-  open={!!toastError}
-  autoHideDuration={5000}
-  onClose={() => setToastError(null)}
-  anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-  key={toastError?.key}
->
-  <Alert
-    severity="error"
-    variant="filled"
-    onClose={() => setToastError(null)}
-    action={
-      <IconButton size="small" color="inherit" onClick={() => setToastError(null)}>
-        <CloseIcon fontSize="small" />
-      </IconButton>
-    }
-    sx={{ alignItems: 'center' }}
-  >
-    {toastError?.text}
-  </Alert>
-</Snackbar>
+      <Snackbar
+        open={!!toastMessage}
+        autoHideDuration={5000}
+        onClose={() => setToastMessage(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        key={toastMessage?.key}
+      >
+        <Alert
+          severity={toastMessage?.type}
+          variant="filled"
+          onClose={() => setToastMessage(null)}
+          action={
+            <IconButton size="small" color="inherit" onClick={() => setToastMessage(null)}>
+              <CloseIcon fontSize="small" />
+            </IconButton>
+          }
+          sx={{ alignItems: 'center' }}
+        >
+          {toastMessage?.text}
+        </Alert>
+      </Snackbar>
 
+<FooterOrdine
+    disableInvio={!hasItems}
+    cooldown={cooldown}
+    inviaOrdine={inviaOrdine}
+    fetchStorico={fetchStorico}
+    totalPortate={sessione.isAyce ? totalPortate : undefined}
+    maxPortate={sessione.isAyce ? maxPortate : undefined}
+/>
 
-      <FooterOrdine
-        disableInvio={Object.values(ordine).every(q => q === 0) || (ordineBloccato && Object.keys(ordine).some(id => {
-          const p = prodotti.find(prod => prod.id === Number(id));
-          return p && (p.categoria?.id ?? 0) < 100 && ordine[Number(id)] > 0;
-        }))}
-        cooldown={cooldown}
-        inviaOrdine={inviaOrdine}
-        fetchStorico={fetchStorico}
-        totalPortate={numPortateSelezionate}
-        maxPortate={numPortateMax}
-      />
 
       <StoricoDialog open={storicoOpen} storico={storico} onClose={() => setStoricoOpen(false)} />
     </Box>

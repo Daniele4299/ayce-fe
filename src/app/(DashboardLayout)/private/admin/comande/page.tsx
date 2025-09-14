@@ -17,11 +17,14 @@ import {
   Divider,
   Button,
   Snackbar,
+  TextField,
 } from '@mui/material';
 import PageContainer from '@/app/(DashboardLayout)/components/container/PageContainer';
 import OrdineCard from '@/app/(DashboardLayout)/components/comande/OrdineCard';
 import SockJS from 'sockjs-client';
 import { Client, IMessage } from '@stomp/stompjs';
+import { useWS } from '@/app/(DashboardLayout)/ws/WSContext';
+
 
 type Ordine = {
   id: number;
@@ -39,8 +42,9 @@ const Comande = () => {
   const [errore, setErrore] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'prodotto' | 'tavolo'>('prodotto');
   const [audioEnabled, setAudioEnabled] = useState(true);
-  const [wsConnesso, setWsConnesso] = useState(true);
   const [cardHeight, setCardHeight] = useState(500);
+  const [filtroProdotto, setFiltroProdotto] = useState('');
+
 
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
   const prevOrdiniRef = useRef<number[]>([]);
@@ -372,7 +376,16 @@ useEffect(() => {
     </Box>
   );
 
-  
+  const gruppiFiltrati = useMemo(() => {
+  if (!filtroProdotto.trim()) return orderedGruppe;
+  return orderedGruppe.filter((g) =>
+    g.titolo.toLowerCase().includes(filtroProdotto.toLowerCase())
+  );
+}, [orderedGruppe, filtroProdotto]);
+
+
+  const { setWsConnesso } = useWS();
+
 
   return (
     <PageContainer title="Comande" description="Lista comande attive">
@@ -400,17 +413,30 @@ useEffect(() => {
 >
         {/* Header bottoni + select */}
         <Grid size={12} sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, flexWrap: 'wrap' }}>
-          <FormControl sx={{ minWidth: 180 }}>
-            <InputLabel id="view-select-label">Visualizzazione</InputLabel>
-            <Select
-              labelId="view-select-label"
-              value={viewMode}
-              onChange={(e) => setViewMode(e.target.value as 'prodotto' | 'tavolo')}
-            >
-              <MenuItem value="prodotto">Per prodotto</MenuItem>
-              <MenuItem value="tavolo">Per tavolo</MenuItem>
-            </Select>
-          </FormControl>
+<FormControl sx={{ minWidth: 140, maxWidth: 180 }}>
+  <InputLabel id="view-select-label">Visualizzazione</InputLabel>
+  <Select
+    labelId="view-select-label"
+    value={viewMode}
+    onChange={(e) => setViewMode(e.target.value as 'prodotto' | 'tavolo')}
+    size="small"
+  >
+    <MenuItem value="prodotto">Per prodotto</MenuItem>
+    <MenuItem value="tavolo">Per tavolo</MenuItem>
+  </Select>
+</FormControl>
+
+{viewMode === 'prodotto' && (
+  <TextField
+    label="Cerca"
+    size="small"
+    variant="outlined"
+    value={filtroProdotto}
+    onChange={(e) => setFiltroProdotto(e.target.value)}
+    sx={{ minWidth: 140, maxWidth: 180 }}
+  />
+)}
+
 
           <Box sx={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
             {[
@@ -435,20 +461,6 @@ useEffect(() => {
               <Button variant="outlined" onClick={resetToArrivalOrder}>Riordina (ordine più vecchio)</Button>
             )}
           </Box>
-          <Box
-  sx={{
-    px: 2,
-    py: 0.5,
-    borderRadius: 1,
-    bgcolor: wsConnesso ? 'success.main' : 'error.main',
-    color: 'common.white',
-    fontWeight: 'bold',
-    fontSize: '0.875rem',
-    whiteSpace: 'nowrap',
-  }}
->
-  {wsConnesso ? 'Connesso' : 'Riconnessione'}
-</Box>
 
         </Grid>
 
@@ -477,7 +489,7 @@ useEffect(() => {
   }}
 >
 
-              {orderedGruppe.map((gruppo) => {
+              {gruppiFiltrati.map((gruppo) => {
                 const key = gruppo.titolo;
                 const isHighlighted = highlightedCards[key] ?? false;
 
