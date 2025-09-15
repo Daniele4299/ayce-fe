@@ -410,7 +410,7 @@ const confermaNuovoOrdine = async () => {
                       </Button>
                     )}
                     <Button variant="outlined" color="primary" onClick={() => window.open(`${backendUrl}/api/qr/${t.numero}`, '_blank')}>QR</Button>
-                    <Button variant="outlined" color="error" onClick={() => setConfirmDelete(t)}>Elimina</Button>
+                    <Button variant="outlined" color="error" onClick={() => setConfirmDelete(t)} disabled>Elimina</Button>
                   </Box>
                 </Box>
               </Grid>

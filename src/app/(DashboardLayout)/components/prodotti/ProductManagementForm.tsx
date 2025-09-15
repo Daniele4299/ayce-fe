@@ -151,7 +151,7 @@ const ProductManagementForm: React.FC = () => {
           <DialogContent>Sei sicuro di voler eliminare questo prodotto?</DialogContent>
           <DialogActions>
             <Button onClick={() => setDeleteDialogOpen(false)}>Annulla</Button>
-            <Button color="error" onClick={handleDeleteConfirmed}>Elimina</Button>
+            <Button color="error" onClick={handleDeleteConfirmed} disabled>Elimina</Button>
           </DialogActions>
         </Dialog>
       </CardContent>
