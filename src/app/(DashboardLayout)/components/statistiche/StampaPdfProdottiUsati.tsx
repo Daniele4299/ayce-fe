@@ -47,7 +47,7 @@ const StampaPdfProdottiUsati = ({ onBack }: Props) => {
       </Box>
 
       <Typography mt={2} variant="body2" color="textSecondary">
-        Se non selezioni una data, verrà generato il PDF per la giornata odierna o per la sera precedente se l'orario è prima delle 7:00.
+        Se non selezioni una data, verrà generato il PDF per la giornata odierna o per la sera precedente se orario è prima delle 7:00.
       </Typography>
     </DashboardCard>
   );
