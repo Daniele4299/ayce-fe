@@ -69,6 +69,8 @@ const apriAddProductModal = async () => {
     const res = await fetch(`${backendUrl}/api/prodotti`, { credentials: 'include' });
     if (res.ok) {
       const data = await res.json();
+      // 🔹 ORDINAMENTO PER CATEGORIA
+      data.sort((a: { categoria: { id: any; }; }, b: { categoria: { id: any; }; }) => (a.categoria?.id ?? 0) - (b.categoria?.id ?? 0));
       setProdotti(data);
       setSearchProdotto('');
       setSelectedProdotto(null);
@@ -84,13 +86,21 @@ const apriAddProductModal = async () => {
 const confermaNuovoOrdine = async () => {
   if (!selectedProdotto || !openResocontoModal) return;
 
+  // Calcolo prezzo considerando sessione AYCE e categorie
+  let prezzoUnitario = selectedProdotto.prezzo;
+
+  // Se la sessione è AYCE e la categoria del prodotto ha id < 100, prezzo = 0
+  if (openResocontoModal?.isAyce && (selectedProdotto as any).categoria?.id < 100) {
+    prezzoUnitario = 0;
+  }
+
   try {
     const body = {
       sessione: { id: openResocontoModal.id },
       tavolo: { id: openResocontoModal.tavolo?.id },
       prodotto: { id: selectedProdotto.id },
       quantita: quantitaProdotto || 1,
-      prezzoUnitario: selectedProdotto.prezzo,
+      prezzoUnitario,
       orario: `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}T${String(new Date().getHours()).padStart(2,'0')}:${String(new Date().getMinutes()).padStart(2,'0')}:${String(new Date().getSeconds()).padStart(2,'0')}`,
       flagConsegnato: false,
       stato: 'INVIATO', // oppure un valore di default coerente con il tuo backend

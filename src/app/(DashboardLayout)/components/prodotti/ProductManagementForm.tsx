@@ -111,14 +111,6 @@ const ProductManagementForm: React.FC = () => {
     <Button variant="contained" color="primary" onClick={handleAddProduct}>
       Aggiungi prodotto
     </Button>
-
-    <Button
-      variant="contained"
-      color="secondary"
-      onClick={() => window.open(`${backendUrl}/api/prodotti/utilizzati/pdf`, '_blank')}
-    >
-      Scarica PDF Prodotti Usati
-    </Button>
   </Box>
 )}
 
