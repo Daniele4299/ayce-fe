@@ -21,6 +21,27 @@ const ProductManagementForm: React.FC = () => {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [productToEdit, setProductToEdit] = useState<any>(null);
+  
+  const [deletedProducts, setDeletedProducts] = useState<any[]>([]);
+  const [deletedModalOpen, setDeletedModalOpen] = useState(false);
+
+  const fetchDeletedProducts = async () => {
+    try {
+      const res = await fetch(`${backendUrl}/api/prodotti/deleted`, { credentials: 'include' });
+      if (res.ok) setDeletedProducts(await res.json());
+    } catch (err) { console.error(err); }
+  };
+
+  const handleRestoreProduct = async (id: number) => {
+    try {
+      const res = await fetch(`${backendUrl}/api/prodotti/${id}/restore`, { method: 'PUT', credentials: 'include' });
+      if (res.ok) {
+        fetchDeletedProducts();
+        fetchData(); // ricarica prodotti attivi
+      }
+    } catch (err) { console.error(err); }
+  };
+
 
   const [filters, setFilters] = useState({
     categoria: 'tutti',
@@ -106,13 +127,17 @@ const ProductManagementForm: React.FC = () => {
         <Typography variant="h5" gutterBottom>Gestione Prodotti</Typography>
 
         {/* Mostra bottone solo se ADMIN */}
-        {role === 'ADMIN' && (
-  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+{role === 'ADMIN' && (
+  <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
     <Button variant="contained" color="primary" onClick={handleAddProduct}>
       Aggiungi prodotto
     </Button>
+    <Button variant="outlined" color="secondary" onClick={() => { fetchDeletedProducts(); setDeletedModalOpen(true); }}>
+      Prodotti eliminati
+    </Button>
   </Box>
 )}
+
 
 
         <Dialog open={modalOpen} onClose={() => setModalOpen(false)} maxWidth="md" fullWidth>
@@ -128,6 +153,38 @@ const ProductManagementForm: React.FC = () => {
             <Button onClick={() => setModalOpen(false)}>Annulla</Button>
           </DialogActions>
         </Dialog>
+
+        <Dialog open={deletedModalOpen} onClose={() => setDeletedModalOpen(false)} maxWidth="sm" fullWidth>
+  <DialogTitle>Prodotti eliminati</DialogTitle>
+  <DialogContent>
+    <Box sx={{ mb: 2 }}>
+      <input 
+        type="text" 
+        placeholder="Cerca..." 
+        style={{ width: '100%', padding: '8px' }}
+        onChange={(e) => {
+          const search = e.target.value.toLowerCase();
+          setDeletedProducts(deletedProducts.map(p => ({
+            ...p,
+            visible: p.nome.toLowerCase().includes(search)
+          })));
+        }}
+      />
+    </Box>
+    <Box sx={{ maxHeight: '400px', overflowY: 'auto' }}>
+      {deletedProducts.filter(p => p.visible !== false).map(p => (
+        <Box key={p.id} sx={{ display: 'flex', justifyContent: 'space-between', mb: 1, p: 1, border: '1px solid #ccc', borderRadius: 1 }}>
+          <Typography>{p.nome}</Typography>
+          <Button size="small" variant="outlined" onClick={() => handleRestoreProduct(p.id)}>Ripristina</Button>
+        </Box>
+      ))}
+    </Box>
+  </DialogContent>
+  <DialogActions>
+    <Button onClick={() => setDeletedModalOpen(false)}>Chiudi</Button>
+  </DialogActions>
+</Dialog>
+
 
         <Divider sx={{ my: 3 }} />
 
@@ -151,7 +208,7 @@ const ProductManagementForm: React.FC = () => {
           <DialogContent>Sei sicuro di voler eliminare questo prodotto?</DialogContent>
           <DialogActions>
             <Button onClick={() => setDeleteDialogOpen(false)}>Annulla</Button>
-            <Button color="error" onClick={handleDeleteConfirmed} disabled>Elimina</Button>
+            <Button color="error" onClick={handleDeleteConfirmed}>Elimina</Button>
           </DialogActions>
         </Dialog>
       </CardContent>

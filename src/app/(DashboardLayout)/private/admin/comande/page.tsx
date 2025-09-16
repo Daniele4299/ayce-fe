@@ -568,10 +568,17 @@ useEffect(() => {
                       <Divider sx={{ mb: 1 }} />
                       <Box sx={{ flex: 1, overflowY: 'auto' }}>
                         {gruppo.ordini.map((o) => (
-                          <OrdineCard key={o.id} ordine={o} mode={viewMode} onToggle={(checked) => handleToggleConsegnato(o, checked)} onRemove={() => {
-        // rimuovi l'ordine solo dopo 1 secondo
-        setOrdini((prev) => prev.filter((ord) => ord.id !== o.id));
-      }}/>
+                          <OrdineCard
+  key={o.id}
+  ordine={o}
+  mode={viewMode}
+  nascondiConsegnati={nascondiConsegnatiRef.current} // ← aggiungi qui
+  onToggle={(checked) => handleToggleConsegnato(o, checked)}
+  onRemove={() => {
+    setOrdini((prev) => prev.filter((ord) => ord.id !== o.id));
+  }}
+/>
+
                         ))}
                       </Box>
                     </CardContent>

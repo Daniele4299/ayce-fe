@@ -17,9 +17,11 @@ interface OrdineCardProps {
   mode: 'prodotto' | 'tavolo';
   onToggle: (checked: boolean) => void;
   onRemove?: () => void; // callback per rimuovere dopo animazione
+  nascondiConsegnati: boolean; // ← nuova prop
 }
 
-const OrdineCard: React.FC<OrdineCardProps> = ({ ordine, mode, onToggle, onRemove }) => {
+
+const OrdineCard: React.FC<OrdineCardProps> = ({ ordine, mode, onToggle, onRemove, nascondiConsegnati }) => {
   const [checked, setChecked] = useState(ordine.flagConsegnato);
   const [pendingRemoval, setPendingRemoval] = useState(false);
 
@@ -30,8 +32,8 @@ const OrdineCard: React.FC<OrdineCardProps> = ({ ordine, mode, onToggle, onRemov
 
   const handleChange = (val: boolean) => {
     setChecked(val);
-    if (val && onRemove) {
-      // Mostra il check per 1 secondo prima di rimuovere
+    // rimuove la riga solo se nascondi consegnati è attivo
+    if (val && onRemove && nascondiConsegnati) {
       setPendingRemoval(true);
       setTimeout(() => {
         onRemove();
@@ -39,6 +41,7 @@ const OrdineCard: React.FC<OrdineCardProps> = ({ ordine, mode, onToggle, onRemov
     }
     onToggle(val);
   };
+
 
   useEffect(() => {
   setChecked(ordine.flagConsegnato);
