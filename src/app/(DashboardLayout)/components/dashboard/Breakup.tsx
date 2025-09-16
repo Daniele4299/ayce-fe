@@ -16,6 +16,9 @@ interface Totali {
   sessioniCarta: number;
   aycePranzi: number;
   ayceCene: number;
+  personeAycePranzo: number;
+  personeAyceCena: number;
+  personeCarta: number;
 }
 
 const Breakup = () => {
@@ -137,13 +140,16 @@ const Breakup = () => {
 
           <Stack direction="column" spacing={0.5} mt={1}>
             <Typography variant="subtitle2" fontWeight="600">
-              {data?.sessioniAyce ?? 0} sessioni AYCE 
-              ({data?.aycePranzi ?? 0} pranzi, {data?.ayceCene ?? 0} cene)
+              {data?.sessioniAyce ?? 0} sessioni AYCE: 
+              ({data?.aycePranzi ?? 0} pranzi con {data?.personeAycePranzo ?? 0} partecipanti | 
+              {data?.ayceCene ?? 0} cene con {data?.personeAyceCena ?? 0} partecipanti)
             </Typography>
             <Typography variant="subtitle2" fontWeight="600">
-              {data?.sessioniCarta ?? 0} sessioni CARTA
+              {data?.sessioniCarta ?? 0} sessioni CARTA: ({data?.personeCarta ?? 0} partecipanti)
             </Typography>
           </Stack>
+
+
         </>
       }
     </DashboardCard>

@@ -33,6 +33,14 @@ const VisualizzaScontrini = ({ onBack }: Props) => {
   const [loading, setLoading] = useState(false);
   const [mostraEliminate, setMostraEliminate] = useState(false);
 
+  interface SessionDelta {
+  sessioneId: number;
+  lordo: number;
+  netto: number;
+  profit: number;
+  costi: number;
+}
+
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
 
   useEffect(() => {
@@ -101,6 +109,34 @@ const VisualizzaScontrini = ({ onBack }: Props) => {
     ? [...sessioniAttive, ...sessioniEliminate]
     : sessioniAttive;
 
+  const [deltas, setDeltas] = useState<Record<number, SessionDelta>>({});
+
+  useEffect(() => {
+    const fetchAllDeltas = async () => {
+      const sessioni = sessioniDaMostrare.filter(s => !deltas[s.id]);
+      if (sessioni.length === 0) return;
+
+      try {
+        const promises = sessioni.map(s =>
+          fetch(`${backendUrl}/api/stats/sessione/${s.id}/delta`, { credentials: 'include' })
+            .then(res => res.ok ? res.json() : null)
+        );
+
+        const results = await Promise.all(promises);
+        const newDeltas: Record<number, SessionDelta> = {};
+        results.forEach((data, idx) => {
+          if (data) newDeltas[sessioni[idx].id] = data;
+        });
+        setDeltas(prev => ({ ...prev, ...newDeltas }));
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    fetchAllDeltas();
+  }, [sessioniDaMostrare]);
+
+
   return (
     <DashboardCard>
       <Box display="flex" alignItems="center" mb={2}>
@@ -136,40 +172,50 @@ const VisualizzaScontrini = ({ onBack }: Props) => {
       {sessioniDaMostrare.length > 0 && (
         <Table>
           <TableHead>
-            <TableRow>
-              <TableCell>Tavolo</TableCell>
-              <TableCell>Orario Apertura</TableCell>
-              <TableCell>Tipologia</TableCell>
-              <TableCell>Stato</TableCell>
-              <TableCell>Azioni</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {sessioniDaMostrare.map(s => (
-              <TableRow key={s.id}>
-                <TableCell>{s.tavolo.numero}</TableCell>
-                <TableCell>{new Date(s.orarioInizio + 'Z').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</TableCell>
-                <TableCell>{s.isAyce ? 'AYCE' : 'CARTA'}</TableCell>
-                <TableCell>{s.stato}</TableCell>
-                <TableCell>
-                  <Box display="flex" gap={1}>
-                    <Button variant="contained" onClick={() => scaricaPdf(s.id)}>
-                      PDF
-                    </Button>
-                    {!s.isDeleted ? (
-                      <Button variant="contained" color="error" onClick={() => eliminaSessione(s.id)}>
-                        Elimina
-                      </Button>
-                    ) : (
-                      <Button variant="contained" color="success" onClick={() => ripristinaSessione(s.id)}>
-                        Ripristina
-                      </Button>
-                    )}
-                  </Box>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
+  <TableRow>
+    <TableCell>Tavolo</TableCell>
+    <TableCell>Orario Apertura</TableCell>
+    <TableCell>Tipologia</TableCell>
+    <TableCell>Stato</TableCell>
+    <TableCell>Totali</TableCell>
+    <TableCell>Azioni</TableCell>
+  </TableRow>
+</TableHead>
+<TableBody>
+  {sessioniDaMostrare.map(s => {
+    const delta = deltas[s.id];
+    return (
+      <TableRow key={s.id}>
+        <TableCell>{s.tavolo.numero}</TableCell>
+        <TableCell>{new Date(s.orarioInizio + 'Z').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</TableCell>
+        <TableCell>{s.isAyce ? 'AYCE' : 'CARTA'}</TableCell>
+        <TableCell>{s.stato}</TableCell>
+        <TableCell>
+          {delta ? (
+            <Box display="flex" flexDirection="column">
+              <Typography variant="caption">Conto: €{delta.lordo.toFixed(2)}</Typography>
+              <Typography variant="caption">Spese: €{delta.costi.toFixed(2)}</Typography>
+              <Typography variant="caption">Ricavo: €{delta.profit.toFixed(2)}</Typography>
+            </Box>
+          ) : (
+            <Typography variant="caption">—</Typography>
+          )}
+        </TableCell>
+        <TableCell>
+          <Box display="flex" gap={1}>
+            <Button variant="contained" onClick={() => scaricaPdf(s.id)}>PDF</Button>
+            {!s.isDeleted ? (
+              <Button variant="contained" color="error" onClick={() => eliminaSessione(s.id)}>Elimina</Button>
+            ) : (
+              <Button variant="contained" color="success" onClick={() => ripristinaSessione(s.id)}>Ripristina</Button>
+            )}
+          </Box>
+        </TableCell>
+      </TableRow>
+    );
+  })}
+</TableBody>
+
         </Table>
       )}
 
