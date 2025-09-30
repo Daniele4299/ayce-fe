@@ -187,7 +187,7 @@ const VisualizzaScontrini = ({ onBack }: Props) => {
     return (
       <TableRow key={s.id}>
         <TableCell>{s.tavolo.numero}</TableCell>
-        <TableCell>{new Date(s.orarioInizio + 'Z').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}</TableCell>
+        <TableCell>{new Date(s.orarioInizio).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</TableCell>
         <TableCell>{s.isAyce ? 'AYCE' : 'CARTA'}</TableCell>
         <TableCell>{s.stato}</TableCell>
         <TableCell>

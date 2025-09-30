@@ -37,26 +37,27 @@ const Breakup = () => {
   const [loading, setLoading] = useState(true);
 
   const getRange = () => {
-    let from: Date, to: Date;
     if(period === 'year') {
-      from = new Date(year, 0, 1, 0, 0, 0);
-      to = new Date(year, 11, 31, 23, 59, 59);
+      const from = `${year}-01-01`;
+      const to = `${year}-12-31`;
+      return { from, to };
     } else if(period === 'month') {
-      from = new Date(year, month-1, 1, 0, 0, 0);
-      to = new Date(year, month-1, new Date(year, month, 0).getDate(), 23, 59, 59);
+      const monthPadded = month.toString().padStart(2, '0');
+      const lastDay = new Date(year, month, 0).getDate();
+      return { from: `${year}-${monthPadded}-01`, to: `${year}-${monthPadded}-${lastDay}` };
     } else { // day
-      const [y, m, d] = day.split("-").map(Number);
-      from = new Date(y, m-1, d, 0, 0, 0);
-      to = new Date(y, m-1, d, 23, 59, 59);
+      return { from: day, to: day };
     }
-    return { from: from.toISOString(), to: to.toISOString() };
-  }
+  };
 
   const fetchData = async () => {
     setLoading(true);
     try {
       const range = getRange();
-      const res = await fetch(`${backendUrl}/api/stats/totali?period=${period}&from=${range.from}&to=${range.to}`, { credentials: "include" });
+      const res = await fetch(
+        `${backendUrl}/api/stats/totali?period=${period}&from=${range.from}&to=${range.to}`,
+        { credentials: "include" }
+      );
       const json = await res.json();
       setData(json);
     } catch (err) {
@@ -65,6 +66,7 @@ const Breakup = () => {
       setLoading(false);
     }
   };
+
 
   useEffect(() => { fetchData(); }, [period, year, month, day]);
 

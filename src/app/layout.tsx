@@ -9,7 +9,7 @@ import './global.css';
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="it-IT">
       <Head>
         {/* Lasciamo lo zoom disponibile */}
         <meta

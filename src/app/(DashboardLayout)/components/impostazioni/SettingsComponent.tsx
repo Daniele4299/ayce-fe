@@ -18,21 +18,20 @@ import { Add, Remove } from '@mui/icons-material';
 interface Impostazione {
   chiave: string;
   valore: string;
-  tipo: 'int' | 'boolean';
+  tipo: 'int' | 'boolean' | 'double';
   minValue?: number;
   maxValue?: number;
   descrizione?: string;
 }
 
-// Ordine fisso delle impostazioni
 const keyOrder = [
   'cucina_attiva',
   'ora_inizio_pranzo',
   'ora_inizio_cena',
+  'prezzo_ayce_pranzo',
+  'prezzo_ayce_cena',
   'tempo_cooldown',
   'portate_per_persona',
-  'backup_database_attivo',
-  'backup_schedule_day',
 ];
 
 const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
@@ -42,10 +41,7 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
   const fetchSettings = async () => {
     const res = await fetch(`${backendUrl}/api/impostazioni`, { credentials: 'include' });
     const data: Impostazione[] = await res.json();
-
-    // Ordina secondo keyOrder
     data.sort((a, b) => keyOrder.indexOf(a.chiave) - keyOrder.indexOf(b.chiave));
-
     setSettings(data);
   };
 
@@ -54,7 +50,6 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
   }, []);
 
   const updateSetting = async (chiave: string, valore: string) => {
-    // invio raw, senza JSON.stringify
     await fetch(`${backendUrl}/api/impostazioni/${chiave}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -70,15 +65,41 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
   };
 
   const handleIncrement = (setting: Impostazione) => {
-    let val = parseInt(setting.valore, 10);
-    if (setting.maxValue !== undefined) val = Math.min(val + 1, setting.maxValue);
-    updateSetting(setting.chiave, val.toString());
+    if (setting.tipo === 'int') {
+      let val = parseInt(setting.valore, 10);
+      if (setting.maxValue !== undefined) val = Math.min(val + 1, setting.maxValue);
+      updateSetting(setting.chiave, val.toString());
+    } else if (setting.tipo === 'double') {
+      let val = parseFloat(setting.valore);
+      if (setting.maxValue !== undefined) val = Math.min(val + 1, setting.maxValue);
+      updateSetting(setting.chiave, val.toFixed(2));
+    }
   };
 
   const handleDecrement = (setting: Impostazione) => {
-    let val = parseInt(setting.valore, 10);
-    if (setting.minValue !== undefined) val = Math.max(val - 1, setting.minValue);
-    updateSetting(setting.chiave, val.toString());
+    if (setting.tipo === 'int') {
+      let val = parseInt(setting.valore, 10);
+      if (setting.minValue !== undefined) val = Math.max(val - 1, setting.minValue);
+      updateSetting(setting.chiave, val.toString());
+    } else if (setting.tipo === 'double') {
+      let val = parseFloat(setting.valore);
+      if (setting.minValue !== undefined) val = Math.max(val - 1, setting.minValue);
+      updateSetting(setting.chiave, val.toFixed(2));
+    }
+  };
+
+  const handleDoubleChange = (setting: Impostazione, newValue: string) => {
+    // Rimuove eventuali caratteri non numerici tranne punto
+    const sanitized = newValue.replace(/[^0-9.]/g, '');
+    if (!sanitized) return;
+
+    let val = parseFloat(sanitized);
+    if (isNaN(val)) return;
+
+    if (setting.minValue !== undefined) val = Math.max(val, setting.minValue);
+    if (setting.maxValue !== undefined) val = Math.min(val, setting.maxValue);
+
+    updateSetting(setting.chiave, val.toFixed(2));
   };
 
   return (
@@ -113,7 +134,13 @@ const SettingsComponent = ({ readOnly = false }: { readOnly?: boolean }) => {
                     <TextField
                       value={setting.valore}
                       size="small"
-                      inputProps={{ readOnly: true, style: { width: 50, textAlign: 'center' } }}
+                      onChange={(e) => {
+                        if (setting.tipo === 'double') handleDoubleChange(setting, e.target.value);
+                      }}
+                      inputProps={{
+                        style: { width: 60, textAlign: 'center' },
+                        readOnly: readOnly && setting.tipo !== 'double', // i double restano editabili
+                      }}
                     />
                     <IconButton onClick={() => handleIncrement(setting)} disabled={readOnly}>
                       <Add />

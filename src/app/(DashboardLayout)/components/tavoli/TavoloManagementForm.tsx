@@ -101,7 +101,7 @@ const confermaNuovoOrdine = async () => {
       prodotto: { id: selectedProdotto.id },
       quantita: quantitaProdotto || 1,
       prezzoUnitario,
-      orario: `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}T${String(new Date().getHours()).padStart(2,'0')}:${String(new Date().getMinutes()).padStart(2,'0')}:${String(new Date().getSeconds()).padStart(2,'0')}`,
+      //orario: `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}T${String(new Date().getHours()).padStart(2,'0')}:${String(new Date().getMinutes()).padStart(2,'0')}:${String(new Date().getSeconds()).padStart(2,'0')}`,
       flagConsegnato: false,
       stato: 'INVIATO', // oppure un valore di default coerente con il tuo backend
     };
@@ -251,14 +251,14 @@ const confermaNuovoOrdine = async () => {
       return;
     }
 
-    const nuovaSessione: Sessione = {
-      id: null,
-      tavolo,
-      orarioInizio: new Date().toISOString(),
-      numeroPartecipanti: numeroPartecipanti ?? 0,
-      isAyce,
-      stato: 'ATTIVA',
-    };
+  const nuovaSessione: Partial<Sessione> = {
+    id: null,
+    tavolo,
+    // orarioInizio: non inviato, lo imposta il backend
+    numeroPartecipanti: numeroPartecipanti ?? 0,
+    isAyce,
+    stato: 'ATTIVA',
+  };
 
     try {
       const res = await fetch(`${backendUrl}/api/sessioni`, {
@@ -386,7 +386,7 @@ const confermaNuovoOrdine = async () => {
                           Partecipanti: {sessione.numeroPartecipanti ?? '-'}
                         </Typography>
 <Typography variant="body2" color="textSecondary">
-  Inizio: {sessione.orarioInizio ? new Date(sessione.orarioInizio + 'Z').toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '-'}
+  Inizio: {sessione.orarioInizio ? new Date(sessione.orarioInizio).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '-'}
 </Typography>
 
                       </>

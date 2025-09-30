@@ -26,57 +26,63 @@ const Affluenza = () => {
   const [data, setData] = useState<AffluenzaEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchAffluenza = async () => {
-    setLoading(true);
-    try {
-      if (view === 'year') {
-        // dati mensili
-        const months = Array.from({ length: 12 }, (_, i) => i + 1);
-        const results = await Promise.all(months.map(async (m) => {
-          const from = new Date(year, m - 1, 1, 0, 0, 0);
-          const to = new Date(year, m - 1, new Date(year, m, 0).getDate(), 23, 59, 59);
+const fetchAffluenza = async () => {
+  setLoading(true);
+  try {
+    if (view === 'year') {
+      // dati mensili
+      const months = Array.from({ length: 12 }, (_, i) => i + 1);
+      const results = await Promise.all(months.map(async (m) => {
+        const monthPadded = m.toString().padStart(2, '0');
+        const from = `${year}-${monthPadded}-01`;
+        const lastDay = new Date(year, m, 0).getDate();
+        const to = `${year}-${monthPadded}-${lastDay}`;
 
-          const res = await fetch(`${backendUrl}/api/stats/totali?from=${from.toISOString()}&to=${to.toISOString()}`, { credentials: "include" });
-          const json = await res.json();
-          return {
-            label: from.toLocaleString("it-IT", { month: "short" }),
-            carta: json.sessioniCarta ?? 0,
-            cartaPersone: json.personeCarta ?? 0,
-            aycePranzo: json.aycePranzi ?? 0,
-            aycePranzoPersone: json.personeAycePranzo ?? 0,
-            ayceCena: json.ayceCene ?? 0,
-            ayceCenaPersone: json.personeAyceCena ?? 0,
-          } as AffluenzaEntry;
-        }));
-        setData(results);
-      } else {
-        // dati giornalieri per il mese selezionato
-        const daysInMonth = new Date(year, month, 0).getDate();
-        const results = await Promise.all(Array.from({ length: daysInMonth }, (_, i) => i + 1).map(async (d) => {
-          const from = new Date(year, month - 1, d, 0, 0, 0);
-          const to = new Date(year, month - 1, d, 23, 59, 59);
+        const res = await fetch(`${backendUrl}/api/stats/totali?from=${from}&to=${to}`, { credentials: "include" });
+        const json = await res.json();
 
-          const res = await fetch(`${backendUrl}/api/stats/totali?from=${from.toISOString()}&to=${to.toISOString()}`, { credentials: "include" });
-          const json = await res.json();
-          return {
-            label: d.toString(),
-            carta: json.sessioniCarta ?? 0,
-            cartaPersone: json.personeCarta ?? 0,
-            aycePranzo: json.aycePranzi ?? 0,
-            aycePranzoPersone: json.personeAycePranzo ?? 0,
-            ayceCena: json.ayceCene ?? 0,
-            ayceCenaPersone: json.personeAyceCena ?? 0,
-          } as AffluenzaEntry;
-        }));
-        setData(results);
-      }
-    } catch (err) {
-      console.error(err);
-      setData([]);
-    } finally {
-      setLoading(false);
+        return {
+          label: new Date(year, m - 1, 1).toLocaleString("it-IT", { month: "short" }),
+          carta: json.sessioniCarta ?? 0,
+          cartaPersone: json.personeCarta ?? 0,
+          aycePranzo: json.aycePranzi ?? 0,
+          aycePranzoPersone: json.personeAycePranzo ?? 0,
+          ayceCena: json.ayceCene ?? 0,
+          ayceCenaPersone: json.personeAyceCena ?? 0,
+        } as AffluenzaEntry;
+      }));
+      setData(results);
+    } else {
+      // dati giornalieri per il mese selezionato
+      const daysInMonth = new Date(year, month, 0).getDate();
+      const results = await Promise.all(Array.from({ length: daysInMonth }, (_, i) => i + 1).map(async (d) => {
+        const dayPadded = d.toString().padStart(2, '0');
+        const monthPadded = month.toString().padStart(2, '0');
+        const from = `${year}-${monthPadded}-${dayPadded}`;
+        const to = from; // stesso giorno
+
+        const res = await fetch(`${backendUrl}/api/stats/totali?from=${from}&to=${to}`, { credentials: "include" });
+        const json = await res.json();
+
+        return {
+          label: d.toString(),
+          carta: json.sessioniCarta ?? 0,
+          cartaPersone: json.personeCarta ?? 0,
+          aycePranzo: json.aycePranzi ?? 0,
+          aycePranzoPersone: json.personeAycePranzo ?? 0,
+          ayceCena: json.ayceCene ?? 0,
+          ayceCenaPersone: json.personeAyceCena ?? 0,
+        } as AffluenzaEntry;
+      }));
+      setData(results);
     }
-  };
+  } catch (err) {
+    console.error(err);
+    setData([]);
+  } finally {
+    setLoading(false);
+  }
+};
 
   useEffect(() => { fetchAffluenza(); }, [year, month, view]);
 

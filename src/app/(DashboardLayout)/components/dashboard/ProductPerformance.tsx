@@ -23,20 +23,22 @@ const ProductPerformance = () => {
   const [limit, setLimit] = useState(5);
 
   const getRange = () => {
-    let from: Date, to: Date;
-    if(period === 'year') {
-      from = new Date(year, 0, 1, 0, 0, 0);
-      to = new Date(year, 11, 31, 23, 59, 59);
-    } else if(period === 'month') {
-      from = new Date(year, month-1, 1, 0, 0, 0);
-      to = new Date(year, month-1, new Date(year, month, 0).getDate(), 23, 59, 59);
+    let from: string, to: string;
+    if (period === 'year') {
+      from = `${year}-01-01`;
+      to = `${year}-12-31`;
+    } else if (period === 'month') {
+      const monthPadded = month.toString().padStart(2, '0');
+      const lastDay = new Date(year, month, 0).getDate();
+      from = `${year}-${monthPadded}-01`;
+      to = `${year}-${monthPadded}-${lastDay}`;
     } else { // day
-      const [y, m, d] = day.split("-").map(Number);
-      from = new Date(y, m-1, d, 0, 0, 0);
-      to = new Date(y, m-1, d, 23, 59, 59);
+      from = day;
+      to = day;
     }
-    return { from: from.toISOString(), to: to.toISOString() };
+    return { from, to };
   }
+
 
   const fetchProducts = async () => {
     setLoading(true);
