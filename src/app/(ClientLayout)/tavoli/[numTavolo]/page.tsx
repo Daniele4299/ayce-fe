@@ -129,7 +129,7 @@ useEffect(() => {
             setOrdine(ordinePayload || {});
 
             if (parsed.lastOrder && parsed.cooldownMinuti) {
-              const diff = Math.max(0, parsed.cooldownMinuti * 60 - Math.floor((Date.now() - Date.parse(parsed.lastOrder)) / 1000));
+              const diff = Math.max(0, parsed.cooldownMinuti * 60 - Math.floor((Date.parse(parsed.dateNow) - Date.parse(parsed.lastOrder)) / 1000));
               if (diff > 0) setCooldown(diff);
             }
 
